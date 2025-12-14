@@ -59,31 +59,7 @@ export const saveState = (state) => {
   }
 }
 
-// 权限设置字典
-export const permissionDict = {
-  // 行权限
-  rowPermissions: {
-    editable: false, // 默认不可编辑
-    deletable: false, // 默认不可删除
-    selectable: true // 默认可选择
-  },
-  // 单元格权限
-  cellPermissions: {
-    editable: false, // 默认不可编辑
-    copyable: true // 默认可复制
-  },
-  // 默认列权限
-  defaultColumnPermissions: {
-    editable: false,
-    validation: {
-      type: '',
-      min: null,
-      max: null,
-      maxLength: null,
-      options: ''
-    }
-  }
-}
+import { permissionDict, applyPermissionsToTable, getDefaultPermissions } from '../hooks/tablePermission';
 
 export const useTaskStore = defineStore('task', {
   state: () => {
@@ -111,15 +87,7 @@ export const useTaskStore = defineStore('task', {
       tableLinks: [],
       
       // 权限设置
-      permissions: {
-        row: {
-          ...permissionDict.rowPermissions
-        },
-        cell: {
-          ...permissionDict.cellPermissions
-        },
-        columns: []
-      },
+      permissions: getDefaultPermissions(),
       
       // 处理进度状态
       // 可选值: 'generation' (在任务生成页), 'condition' (在条件设置页), 'release' (在任务发布页)
@@ -205,15 +173,6 @@ export const useTaskStore = defineStore('task', {
       saveState(this.$state)
     },
     
-    // 设置权限
-    setPermissions(type, permissions) {
-      if (type === 'row' || type === 'cell') {
-        this.permissions[type] = {...this.permissions[type], ...permissions}
-        // 保存状态到本地存储
-        saveState(this.$state)
-      }
-    },
-    
     // 设置列权限
     setColumnPermissions(columns) {
       this.permissions.columns = columns
@@ -223,29 +182,7 @@ export const useTaskStore = defineStore('task', {
     
     // 为特定表格应用权限设置
     applyPermissionsToTable(tableData, columns) {
-      // 应用行权限
-      const rowsWithPermissions = tableData.map(row => ({
-        ...row,
-        _permissions: {
-          ...this.permissions.row
-        }
-      }))
-      
-      // 应用列权限
-      const columnsWithPermissions = columns.map(col => {
-        const existingColPermission = this.permissions.columns.find(p => p.label === col)
-        return {
-          label: col,
-          prop: col,
-          ...permissionDict.defaultColumnPermissions,
-          ...existingColPermission
-        }
-      })
-      
-      return {
-        data: rowsWithPermissions,
-        columns: columnsWithPermissions
-      }
+      return applyPermissionsToTable(tableData, columns, this.permissions)
     },
     
     // 设置表格链接
@@ -267,15 +204,7 @@ export const useTaskStore = defineStore('task', {
       this.header = ''
       this.splitData = []
       this.tableLinks = []
-      this.permissions = {
-        row: {
-          ...permissionDict.rowPermissions
-        },
-        cell: {
-          ...permissionDict.cellPermissions
-        },
-        columns: []
-      }
+      this.permissions = getDefaultPermissions()
       this.progress = 'generation'
       // 清除本地存储中的数据
       try {

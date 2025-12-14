@@ -50,7 +50,7 @@
           :key="col.prop"
           :prop="col.prop"
           :label="col.label"
-          :width="col.width || 120"
+          :width="col.width || 240"
         />
       </el-table>
     </el-dialog>
