@@ -216,9 +216,25 @@ const fetchSplitTables = async () => {
     // 调用API从服务端获取数据
     const response = await getTaskReleaseData(taskId.value);
     
-    // 直接使用服务端返回的数据
-    if (response && response.tables) {
-      splitTables.value = response.tables;
+    // 转换后端返回的数据结构为前端需要的格式
+    if (response && response.splitData) {
+      // 确保tableLinks存在且为数组
+      const tableLinks = response.tableLinks || [];
+      
+      // 转换splitData为前端需要的表格格式
+      splitTables.value = response.splitData.map((table, index) => {
+        // 获取对应索引的链接码，如果没有则使用空字符串
+        const linkCode = tableLinks[index] || '';
+        
+        return {
+          id: index + 1,
+          name: table.sheetName || `表格${index + 1}`,
+          rowCount: table.data ? table.data.length : 0,
+          link: `http://${window.location.hostname}:3000/fill?link=${linkCode}`,
+          status: '未上传',
+          originalData: table
+        };
+      });
     } else {
       splitTables.value = [];
     }

@@ -35,9 +35,9 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
     db.run(`CREATE TABLE IF NOT EXISTS task_submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       task_id INTEGER NOT NULL,
-      submitter TEXT NOT NULL,
+      tableLink TEXT NOT NULL,
       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      data JSON NOT NULL,
+      submitted_data JSON NOT NULL,
       FOREIGN KEY (task_id) REFERENCES tasks (id)
     )`, (err) => {
       if (err) {
