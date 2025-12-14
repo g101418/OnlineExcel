@@ -50,7 +50,7 @@
       <div v-for="(col, index) in localColumns" :key="index" class="column-setting">
         <div class="column-basic-permissions">
           <label>
-            {{ col.label }} 
+            <strong>{{ col.label }} </strong>
             <el-checkbox v-model="col.editable" :disabled="split && header && col.label === header" />
             可编辑
           </label>

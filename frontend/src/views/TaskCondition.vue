@@ -182,19 +182,21 @@ const goHome = () => router.push({ path: "/" });
 
 const saveSettings = async () => {
   try {
-    // 生成表格链接
-    const generateTableLink = (table, index) => {
+    // 生成表格随机编码
+    const generateTableCode = (table, index) => {
       const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
       const tableIdentifier = `${table.name || `table_${index}`}:${table.rowCount}:${index}`;
       const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
-      const linkHash = SparkMD5.hash(metaStr).slice(0, 28);
-      return `${window.location.origin}/process-table?link=${linkHash}`;
+      return SparkMD5.hash(metaStr).slice(0, 28);
     };
 
-    // 为所有表格生成链接并保存到store
+    // 为所有表格生成随机编码并保存到store
+    const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
+    // 保存到store时保留完整信息，方便前端使用
     const tableLinks = splitTables.value.map((table, index) => ({
       name: table.name,
-      link: generateTableLink(table, index)
+      code: tableCodes[index],
+      link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
     }));
     store.setTableLinks(tableLinks);
 
@@ -202,10 +204,14 @@ const saveSettings = async () => {
     const taskData = {
       taskId: taskId.value,
       fileName: fileName.value,
+      tableLinks: tableCodes, // 只发送随机编码数组
+      uploadedHeaders: store.uploadedHeaders,
+      uploadedData: store.uploadedData,
       split: split.value,
       header: header.value,
-      tableLinks: tableLinks,
-      splitTables: splitTables.value
+      selectedHeader: store.selectedHeader,
+      splitData: store.splitData,
+      permissions: store.permissions
     };
 
     // 调用API保存设置到服务端
