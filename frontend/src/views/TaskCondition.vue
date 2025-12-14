@@ -1,12 +1,7 @@
 <template>
   <div class="task-condition-root">
-    <TaskInfo
-      title="设定条件"
-      :taskId="taskId"
-      :fileName="fileName"
-      :showDivider="true"
-      @task-validity-change="handleTaskValidityChange"
-    />
+    <TaskInfo title="设定条件" :taskId="taskId" :fileName="fileName" :showDivider="true"
+      @task-validity-change="handleTaskValidityChange" />
     <!-- 只有当任务有效时，才显示内容 -->
     <div v-if="isTaskValid" class="info">
       <!-- 显示拆分后的表格列表 -->
@@ -27,12 +22,8 @@
       </div>
 
       <!-- 添加权限设置面板 -->
-      <div class="permission-panel" v-if="columns.length > 0">
-        <PermissionSettingPanel
-          :columns="columns"
-          :row-permissions="rowPermissions"
-          :cell-permissions="cellPermissions"
-        />
+      <div class="permission-panel">
+        <PermissionSettingPanel />
       </div>
 
       <!-- 添加操作按钮 -->
@@ -45,18 +36,20 @@
     <!-- 查看表格对话框 -->
     <el-dialog v-model="dialogVisible" :title="currentTable.name" width="80%">
       <el-table :data="currentTable.data" height="400" border>
-        <el-table-column
-          v-for="col in currentTable.columns"
-          :key="col.prop"
-          :prop="col.prop"
-          :label="col.label"
-          :width="col.width || 120"
-        />
+        <el-table-column v-for="col in currentTable.columns" :key="col.prop" :prop="col.prop" :label="col.label"
+          :width="col.width || 240" />
       </el-table>
     </el-dialog>
   </div>
-</template>
 
+  <!-- 临时权限展示区域 -->
+  <div class="permission-display">
+    <h4>当前权限设置</h4>
+    <pre>{{ JSON.stringify(store.permissions, null, 2) }}</pre>
+  </div>
+
+
+</template>
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
 import { ref, reactive, onMounted, computed, watch } from "vue";
@@ -86,10 +79,7 @@ const dialogVisible = ref(false);
 const currentTable = ref({});
 
 // 权限设置相关数据
-const columns = ref([]);
-const rowPermissions = computed(() => store.permissions.row);
-const cellPermissions = computed(() => store.permissions.cell);
-const columnPermissions = computed(() => store.permissions.columns);
+// 权限管理已迁移到 PermissionSettingPanel.vue 组件中
 
 // 任务有效性状态（由TaskInfo组件传递）
 const isTaskValid = ref(true);
@@ -99,65 +89,7 @@ const handleTaskValidityChange = (valid: boolean) => {
   isTaskValid.value = valid;
 };
 
-// 初始化列数据
-const initColumns = () => {
-  if (split.value && header.value) {
-    // 如果是拆分任务，基于拆分字段创建列
-    const headers = header.value.split(",").map((h) => h.trim());
-    columns.value = headers.map((h, index) => ({
-      label: h,
-      prop: `col${index}`,
-      editable: true,
-      validation: {
-        type: "",
-        min: null,
-        max: null,
-        maxLength: null,
-        options: "",
-      },
-    }));
-  } else if (fileName.value) {
-    // 如果不是拆分任务，根据文件名模拟一些默认列
-    columns.value = [
-      {
-        label: "ID",
-        prop: "id",
-        editable: true,
-        validation: {
-          type: "number",
-          min: null,
-          max: null,
-          maxLength: null,
-          options: "",
-        },
-      },
-      {
-        label: "名称",
-        prop: "name",
-        editable: true,
-        validation: {
-          type: "text",
-          min: null,
-          max: null,
-          maxLength: 50,
-          options: "",
-        },
-      },
-      {
-        label: "状态",
-        prop: "status",
-        editable: true,
-        validation: {
-          type: "options",
-          min: null,
-          max: null,
-          maxLength: null,
-          options: "启用,禁用",
-        },
-      },
-    ];
-  }
-};
+
 
 // 获取拆分表格数据
 const fetchSplitTables = async () => {
@@ -166,7 +98,7 @@ const fetchSplitTables = async () => {
     if (!split.value) {
       const headers = store.uploadedHeaders;
       const data = store.uploadedData;
-      
+
       if (headers.length > 0 && data.length > 0) {
         // 将二维数组转换为对象数组
         const formattedData = data.map(row => {
@@ -176,7 +108,7 @@ const fetchSplitTables = async () => {
           });
           return obj;
         });
-        
+
         splitTables.value = [{
           name: fileName.value || "未命名表格",
           rowCount: data.length,
@@ -192,10 +124,10 @@ const fetchSplitTables = async () => {
       }
       return;
     }
-    
+
     // 拆分的情况：使用拆分后的数据
     if (!header.value) return;
-    
+
     // 从 store 获取真实的拆分数据
     if (splitData.value && splitData.value.length > 0) {
       splitTables.value = splitData.value.map(item => {
@@ -207,7 +139,7 @@ const fetchSplitTables = async () => {
           });
           return obj;
         });
-        
+
         return {
           name: item.sheetName,
           rowCount: item.data.length,
@@ -239,10 +171,7 @@ const viewTable = (table) => {
 const goToTaskGeneration = () => {
   // 重置进度为任务生成页面
   store.progress = 'generation';
-  
-  // 保存当前的列权限设置
-  store.setColumnPermissions(columns.value);
-  
+
   router.push({
     path: "/task-generation",
     query: { taskId: taskId.value }
@@ -253,9 +182,6 @@ const goHome = () => router.push({ path: "/" });
 
 const saveSettings = async () => {
   try {
-    // 保存权限设置到store
-    store.setColumnPermissions(columns.value);
-    
     // 生成表格链接
     const generateTableLink = (table, index) => {
       const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
@@ -264,36 +190,33 @@ const saveSettings = async () => {
       const linkHash = SparkMD5.hash(metaStr).slice(0, 28);
       return `${window.location.origin}/process-table?link=${linkHash}`;
     };
-    
+
     // 为所有表格生成链接并保存到store
     const tableLinks = splitTables.value.map((table, index) => ({
       name: table.name,
       link: generateTableLink(table, index)
     }));
     store.setTableLinks(tableLinks);
-    
+
     // 准备发送到服务端的数据
     const taskData = {
       taskId: taskId.value,
       fileName: fileName.value,
       split: split.value,
       header: header.value,
-      columns: columns.value,
-      rowPermissions: rowPermissions.value,
-      cellPermissions: cellPermissions.value,
       tableLinks: tableLinks,
       splitTables: splitTables.value
     };
-    
+
     // 调用API保存设置到服务端
     await saveTaskSettings(taskData);
-    
+
     // 跳转到任务发布页面
     router.push({
       path: "/task-release",
       query: { taskId: taskId.value }
     });
-    
+
     ElMessage.success("任务设置已成功保存并提交到服务端");
   } catch (error) {
     console.error("保存任务设置失败:", error);
@@ -302,14 +225,10 @@ const saveSettings = async () => {
 };
 
 onMounted(() => {
+  // 设置当前进度为条件设定页面
+  store.progress = 'condition';
   // 直接初始化数据，路由参数与store的一致性已由TaskInfo组件检查
-  initColumns();
   fetchSplitTables();
-  
-  // 如果store中有权限设置，应用到columns
-  if (store.permissions.columns.length > 0) {
-    columns.value = store.permissions.columns;
-  }
 });
 
 // 监听路由参数变化，手动修改URL时更新页面
@@ -318,13 +237,7 @@ watch(
   (newQuery) => {
     // 当路由参数变化时，重新初始化数据
     // 路由参数与store的一致性已由TaskInfo组件检查
-    initColumns();
     fetchSplitTables();
-    
-    // 如果store中有权限设置，应用到columns
-    if (store.permissions.columns.length > 0) {
-      columns.value = store.permissions.columns;
-    }
   },
   { deep: true }
 );
@@ -375,5 +288,33 @@ watch(
 .table-header p {
   margin: 0;
   font-size: 14px;
+}
+
+/* 临时权限展示样式 */
+.permission-display {
+  margin-top: 30px;
+  padding: 15px;
+  background-color: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.permission-display h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 16px;
+  color: #333;
+}
+
+.permission-display pre {
+  margin: 0;
+  padding: 10px;
+  background-color: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 14px;
+  color: #606266;
 }
 </style>

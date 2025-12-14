@@ -250,13 +250,13 @@ const handleChange = (file, fileListArg) => {
   // file.raw is the actual File object
   selectedFile.value = file.raw || file;
   fileList.value = fileListArg;
-  // parse the file and store headers + data into sessionStorage for TaskRelease view
-  parseFileToSession(selectedFile.value as File).catch((err) => {
+  // parse the file and store headers + data into store for TaskRelease view
+  parseFileToStore(selectedFile.value as File).catch((err) => {
     console.error("parse file error:", err);
   });
 };
 
-const parseFileToSession = async (file: File) => {
+const parseFileToStore = async (file: File) => {
   try {
     const data = await file.arrayBuffer();
     const workbook = XLSX.read(data, { type: "array" });
@@ -299,7 +299,7 @@ const submitUpload = async () => {
   
   try {
     // 确保文件解析完成，重新解析以保证数据最新
-    await parseFileToSession(selectedFile.value as File);
+    await parseFileToStore(selectedFile.value as File);
     
     // 检查表头是否重复
     if (store.uploadedHeaders && store.uploadedHeaders.length > 0) {

@@ -55,6 +55,8 @@ const handleTaskValidityChange = (valid: boolean) => {
 };
 
 onMounted(async () => {
+  // 设置当前进度为任务生成页面
+  store.progress = 'generation';
   // 直接处理数据，路由参数与store的一致性已由TaskInfo组件检查
   // 将原始数据转换为表格需要的对象格式
   if (rawData.value && rawData.value.length && headers.value.length) {
