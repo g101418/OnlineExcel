@@ -1,0 +1,491 @@
+<template>
+  <div class="home-root">
+    <div class="home-card">
+      <div class="icon" aria-hidden>
+        <img :src="logo" alt="logo" class="logo" />
+      </div>
+
+      <h1 class="title">在线表格处理工具</h1>
+      <p class="desc">将大型表格拆分为多个可管理的任务，支持批量生成与下载。</p>
+
+      <el-button class="start-btn" size="large" type="primary" @click="openUploadDialog">
+        上传表格开始任务
+      </el-button>
+      <el-dialog
+        title="上传表格"
+        v-model="showUploadDialog"
+        append-to-body
+        width="680px"
+        @close="onDialogClose"
+      >
+        <div class="dialog-content">
+          <el-upload
+            class="upload-demo"
+            :before-upload="beforeUpload"
+            :auto-upload="false"
+            accept=".xls,.xlsx,.csv"
+            :on-change="handleChange"
+            :file-list="fileList"
+            :limit="1"
+            drag
+          >
+            <i class="el-icon-upload"></i>
+            <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+            <div class="el-upload__tip">仅支持后缀为 .xls/.xlsx/.csv 的表格文件</div>
+          </el-upload>
+          <div v-if="uploading" style="margin-top: 12px">
+            <el-progress :percentage="uploadProgress" />
+          </div>
+        </div>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="onDialogClose">取消</el-button>
+            <el-button
+              type="primary"
+              :disabled="!selectedFile || uploading"
+              @click="submitUpload"
+              >上传并继续</el-button
+            >
+          </span>
+        </template>
+      </el-dialog>
+
+      <!-- 历史表格信息展示 -->
+      <div v-if="hasHistoricalData" class="history-section">
+        <h2 class="history-title">历史任务</h2>
+        <el-table :data="historicalTables" style="width: 100%; margin-bottom: 20px">
+          <el-table-column prop="fileName" label="文件名" min-width="180" />
+          <el-table-column prop="taskId" label="任务ID" width="180" />
+          <el-table-column prop="dataSize" label="数据大小" width="120">
+            <template #default="scope">{{ formatDataSize(scope.row.dataSize) }}</template>
+          </el-table-column>
+          <el-table-column prop="updateTime" label="更新时间" width="180" />
+          <el-table-column label="操作" width="120">
+            <template #default="scope">
+              <el-button type="primary" size="small" @click="navigateToTask(scope.row)">
+                处理
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="clear-history">
+          <el-button size="small" text @click="clearHistory">清除历史任务</el-button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+import { ref, onMounted, computed } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+
+import SparkMD5 from "spark-md5";
+import logo from "../assets/logo.png";
+import * as XLSX from "xlsx";
+import { useTaskStore, saveState } from "../stores/task";
+
+// when a file is selected, we parse it and store the parsed data in pinia store
+
+const store = useTaskStore();
+
+const router = useRouter();
+const showUploadDialog = ref(false);
+const fileList = ref<any[]>([]);
+const selectedFile = ref<File | null>(null);
+const uploading = ref(false);
+const uploadProgress = ref(0);
+
+// 历史表格信息
+const historicalTables = ref([]);
+const hasHistoricalData = computed(() => historicalTables.value.length > 0);
+
+// 计算历史表格数据大小
+const calculateDataSize = (headers, data) => {
+  try {
+    const jsonStr = JSON.stringify({ headers, data });
+    return new Blob([jsonStr]).size;
+  } catch (e) {
+    return 0;
+  }
+};
+
+// 格式化数据大小
+const formatDataSize = (bytes) => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+// 导航到任务页面
+const navigateToTask = (table) => {
+  // 根据store中的progress状态决定跳转目标
+  let targetPath;
+  if (store.progress === 'condition') {
+    targetPath = '/task-condition';
+  } else if (store.progress === 'release') {
+    targetPath = '/task-release';
+  } else {
+    targetPath = '/task-generation';
+  }
+  
+  router.push({
+    path: targetPath,
+    query: { taskId: table.taskId },
+  });
+};
+
+// 清除历史记录
+const clearHistory = async () => {
+  try {
+    await ElMessageBox.confirm('确定要清除所有历史表格记录吗？', '警告', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+    
+    // TODO: 通知服务端删除任务
+    // 1. 获取所有历史任务的taskId
+    // 2. 调用后端API批量删除任务
+    // 示例API调用: await deleteTasks(historicalTables.value.map(table => table.taskId));
+    
+    // 清除store中的数据
+    store.clearAll();
+    
+    // 清空历史表格列表
+    historicalTables.value = [];
+    
+    ElMessage.success('历史记录已清除');
+  } catch (error) {
+    // 用户取消清除
+    if (error !== 'cancel') {
+      ElMessage.error('清除历史记录失败');
+    }
+  }
+};
+
+// 加载历史表格数据
+const loadHistoricalData = () => {
+  if (store.hasTask && store.hasUploadedData) {
+    // 计算数据大小
+    const dataSize = calculateDataSize(store.uploadedHeaders, store.uploadedData);
+    
+    // 创建历史表格项
+    const historicalItem = {
+      taskId: store.taskId,
+      fileName: store.fileName,
+      dataSize: dataSize,
+      updateTime: new Date().toLocaleString('zh-CN'),
+    };
+    
+    // 检查是否已存在相同taskId的记录
+    const existingIndex = historicalTables.value.findIndex(item => item.taskId === store.taskId);
+    if (existingIndex >= 0) {
+      // 更新已存在的记录
+      historicalTables.value[existingIndex] = historicalItem;
+    } else {
+      // 添加新记录
+      historicalTables.value.push(historicalItem);
+    }
+  }
+};
+
+// 页面加载时加载历史表格数据
+onMounted(() => {
+  loadHistoricalData();
+});
+
+const openUploadDialog = async () => {
+  // 检查是否有历史任务存在
+  if (hasHistoricalData.value || (store.hasTask && store.hasUploadedData)) {
+    try {
+      await ElMessageBox.confirm('检测到有未完成的历史任务，继续上传将覆盖当前任务。是否继续？', '警告', {
+        confirmButtonText: '继续上传',
+        cancelButtonText: '取消',
+        type: 'warning',
+      });
+      
+      // 用户确认继续上传，清除历史任务
+      await clearHistory();
+    } catch (error) {
+      // 用户取消上传
+      if (error !== 'cancel') {
+        console.error('确认对话框出错:', error);
+      }
+      return;
+    }
+  }
+  showUploadDialog.value = true;
+};
+
+const onDialogClose = () => {
+  showUploadDialog.value = false;
+  fileList.value = [];
+  selectedFile.value = null;
+  uploading.value = false;
+  uploadProgress.value = 0;
+};
+
+const beforeUpload = (file) => {
+  const validExt = ["xls", "xlsx", "csv"];
+  const name = file.name || "";
+  const ext = name.split(".").pop().toLowerCase();
+  if (!validExt.includes(ext)) {
+    ElMessage.error("只支持 .xls / .xlsx / .csv 格式的文件");
+    return false;
+  }
+  // max 4MB
+  const isLt20M = file.size / 1024 / 1024 < 4;
+  if (!isLt20M) {
+    ElMessage.error("文件不能超过 4MB");
+    return false;
+  }
+  return true;
+};
+
+const handleChange = (file, fileListArg) => {
+  // file.raw is the actual File object
+  selectedFile.value = file.raw || file;
+  fileList.value = fileListArg;
+  // parse the file and store headers + data into sessionStorage for TaskRelease view
+  parseFileToSession(selectedFile.value as File).catch((err) => {
+    console.error("parse file error:", err);
+  });
+};
+
+const parseFileToSession = async (file: File) => {
+  try {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    // Use sheet_to_json with header: 1 to get arrays (first row is headers)
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    if (!rows || rows.length === 0) {
+      store.clearUploadedData();
+      return;
+    }
+    const headers = rows[0].map((h) => (h === null || h === undefined ? "" : String(h)));
+    const dataRows = rows.slice(1);
+    store.setUploadedData(headers, dataRows);
+  } catch (err) {
+    console.error("failed to parse file:", err);
+    store.clearUploadedData();
+  }
+};
+
+const submitUpload = async () => {
+  if (!selectedFile.value) {
+    ElMessage.warning("请先选择一个表格文件");
+    return;
+  }
+  // 再次校验文件类型/大小，防止绕过 beforeUpload
+  if (!beforeUpload(selectedFile.value)) {
+    return;
+  }
+  uploading.value = true;
+  uploadProgress.value = 0;
+  const clientTaskId = generateTaskId(selectedFile.value as File);
+  
+  // 模拟上传进度
+  const uploadInterval = setInterval(() => {
+    if (uploadProgress.value < 90) {
+      uploadProgress.value += 10;
+    }
+  }, 200);
+  
+  try {
+    // 确保文件解析完成，重新解析以保证数据最新
+    await parseFileToSession(selectedFile.value as File);
+    
+    // 检查表头是否重复
+    if (store.uploadedHeaders && store.uploadedHeaders.length > 0) {
+      const headerSet = new Set();
+      const duplicateHeaders = [];
+      
+      store.uploadedHeaders.forEach((header, index) => {
+        if (headerSet.has(header)) {
+          duplicateHeaders.push({ index: index + 1, name: header });
+        } else {
+          headerSet.add(header);
+        }
+      });
+      
+      // 如果有重复的表头，显示错误消息并终止上传过程
+      if (duplicateHeaders.length > 0) {
+        const errorMsg = `表格中存在重复的表头：${duplicateHeaders.map(h => `第${h.index}列 "${h.name}"`).join("、")}`;
+        ElMessage.error(errorMsg);
+        store.clearUploadedData();
+        selectedFile.value = null;
+        fileList.value = [];
+        uploading.value = false;
+        uploadProgress.value = 0;
+        return;
+      }
+    }
+    
+    // 直接执行前端逻辑，不调用后端API
+    await new Promise(resolve => setTimeout(resolve, 500)); // 缩短模拟处理时间
+    
+    clearInterval(uploadInterval);
+    uploadProgress.value = 100;
+    
+    // 设置任务信息并跳转
+    store.setTaskInfo(clientTaskId, selectedFile.value?.name || "");
+    
+    // 手动触发状态保存，确保数据已写入localStorage
+    const saveSuccess = saveState(store.$state);
+    if (!saveSuccess) {
+      ElMessage.warning("数据保存空间不足，刷新页面可能导致数据丢失");
+    }
+    
+    showUploadDialog.value = false;
+    ElMessage.success("文件处理成功，正在跳转...");
+    router.push({
+      path: "/task-generation",
+      query: { taskId: clientTaskId },
+    });
+  } catch (e) {
+    clearInterval(uploadInterval);
+    console.error("文件处理失败:", e);
+    store.setTaskInfo(clientTaskId, selectedFile.value?.name || "");
+    showUploadDialog.value = false;
+    ElMessage.success("文件处理成功，正在跳转...");
+    router.push({
+      path: "/task-generation",
+      query: { taskId: clientTaskId },
+    });
+  } finally {
+    uploading.value = false;
+    uploadProgress.value = 0;
+  }
+};
+
+const generateTaskId = (file: File) => {
+  // 原有逻辑：仅包含年月日
+  // const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+  
+  // 新逻辑：包含年月日时分秒
+  const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, ""); // YYYYMMDDHHmmss
+  
+  const baseName = file.name || "";
+  const metaStr = `${dateStr}:${baseName}:${file.size}:${file.lastModified || 0}`;
+  return SparkMD5.hash(metaStr).slice(0, 24);
+};
+
+// uploadToServer removed; use uploadFile from src/api/index.js
+</script>
+
+<style scoped lang="less">
+.home-root {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  padding: 20px 0;
+  width: 100%;
+}
+
+.home-card {
+  width: 100%;
+  max-width: 720px;
+  text-align: center;
+  padding: 56px 32px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.desc {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.start-btn {
+  margin-top: 12px;
+  width: 100%;
+  max-width: 360px;
+  font-size: 18px;
+  padding: 12px 20px;
+  height: 48px;
+}
+
+.logo {
+  width: 96px;
+  height: 96px;
+}
+
+/* 历史表格样式 */
+.history-section {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e7ed;
+  width: 100%;
+}
+
+.history-title {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.clear-history {
+  text-align: right;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .history-section {
+    margin-top: 30px;
+  }
+  
+  .history-title {
+    font-size: 16px;
+  }
+  
+  .el-table {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-card {
+    padding: 36px 20px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+  .start-btn {
+    font-size: 16px;
+    height: 44px;
+  }
+  
+  .history-section {
+    margin-top: 24px;
+  }
+}
+</style>
