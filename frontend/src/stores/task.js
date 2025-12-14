@@ -42,6 +42,7 @@ export const saveState = (state) => {
       splitData: state.splitData,
       tableLinks: state.tableLinks,
       permissions: state.permissions,
+      permissionPanelCollapsed: state.permissionPanelCollapsed,
       progress: state.progress
     }
     
@@ -88,6 +89,9 @@ export const useTaskStore = defineStore('task', {
       
       // 权限设置
       permissions: getDefaultPermissions(),
+      
+      // 面板折叠状态
+      permissionPanelCollapsed: false,
       
       // 处理进度状态
       // 可选值: 'generation' (在任务生成页), 'condition' (在条件设置页), 'release' (在任务发布页)

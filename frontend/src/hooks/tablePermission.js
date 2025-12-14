@@ -2,24 +2,24 @@
 export const permissionDict = {
   // 行权限
   rowPermissions: {
-    editable: false, // 默认不可编辑
     deletable: false, // 默认不可删除
-    selectable: true // 默认可选择
-  },
-  // 单元格权限
-  cellPermissions: {
-    editable: false, // 默认不可编辑
-    copyable: true // 默认可复制
+    addable: true, // 默认允许新增行
+    sortable: false // 默认不允许调整行顺序
   },
   // 默认列权限
   defaultColumnPermissions: {
     editable: false,
+    required: false, // 是否必填
     validation: {
       type: '',
       min: null,
       max: null,
       maxLength: null,
-      options: ''
+      options: '',
+      isInteger: false, // 是否为整数
+      regex: '', // 自定义正则表达式
+      regexName: '', // 正则表达式名称（如手机号、身份证号等）
+      format: 'yyyy-mm-dd' // 日期格式，默认为yyyy-mm-dd
     }
   }
 };
@@ -56,9 +56,6 @@ export const getDefaultPermissions = () => {
   return {
     row: {
       ...permissionDict.rowPermissions
-    },
-    cell: {
-      ...permissionDict.cellPermissions
     },
     columns: []
   };
