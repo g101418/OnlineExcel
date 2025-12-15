@@ -139,10 +139,10 @@ const getStatusText = (progress) => {
 // 获取任务状态类型
 const getStatusType = (progress) => {
   const typeMap = {
-    generation: 'primary',
-    condition: 'info',
-    release: 'success',
-    completed: 'success'
+    generation: 'info',      // 浅蓝色（正在拆分表格）
+    condition: 'primary',    // 深蓝色（正在设置条件）
+    release: 'warning',      // 橙色（已经发布任务）
+    completed: 'success'     // 绿色（已经完成）
   };
   return typeMap[progress] || 'default';
 };
