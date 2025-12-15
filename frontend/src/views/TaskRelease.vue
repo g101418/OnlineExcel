@@ -1,13 +1,9 @@
 <template>
   <div class="task-release-root">
-    <TaskInfo
-      title="发布任务"
-      :taskId="taskId"
-      :fileName="fileName"
-    />
+    <TaskInfo title="发布任务" />
     
     <!-- 显示表格列表 -->
-    <div v-if="splitTables.length > 0" class="tables-container">
+    <div v-if="isTaskValid && splitTables.length > 0" class="tables-container">
       <div class="table-header">
         <h3>表格列表</h3>
         <div class="header-buttons">
@@ -65,18 +61,30 @@ import { ElMessage } from "element-plus";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore } from "../stores/task";
 // 导入API
-import { getTaskReleaseData, withdrawTask } from "../api/task";
+import { getTaskReleaseData, withdrawTask, getTaskData } from "../api/task";
 
 const router = useRouter();
 const route = useRoute();
 const store = useTaskStore();
 
-// 从store获取数据
-const taskId = computed(() => store.taskId);
-const fileName = computed(() => store.fileName);
-const split = computed(() => store.split);
-const header = computed(() => store.header);
-const splitData = computed(() => store.splitData);
+// 从路由query获取taskId
+const taskId = computed(() => route.query.taskId as string);
+// 从store获取当前任务数据
+const currentTask = computed(() => store.tasks.find(task => task.taskId === taskId.value));
+const fileName = computed(() => currentTask.value?.fileName || '');
+const taskName = computed(() => currentTask.value?.taskName || '');
+const split = computed(() => currentTask.value?.split || false);
+const header = computed(() => currentTask.value?.header || '');
+const splitData = computed(() => currentTask.value?.splitData || []);
+
+// 任务有效性检查
+const isTaskValid = computed(() => {
+  if (!route.query.taskId) return false;
+  
+  // 检查本地store中是否存在该taskId的任务
+  const taskExists = store.tasks.some(task => task.taskId === route.query.taskId);
+  return taskExists;
+});
 
 // 拆分表格相关数据
 const splitTables = ref([]);
@@ -175,8 +183,17 @@ const goToTaskCondition = async () => {
     // 调用API撤回任务
     await withdrawTask(taskId.value);
     
+    // 调用API获取最新任务数据并更新Pinia store
+    const taskData = await getTaskData(taskId.value);
+    // 更新当前任务的信息
+    store.setUploadedData(taskData.uploadedHeaders, taskData.uploadedData);
+    store.setSplitInfo(taskData.splitEnabled, taskData.selectedHeader);
+    // 更新其他必要的任务信息
+    if (taskData.taskName) store.setTaskName(taskData.taskName);
+    if (taskData.taskDeadline) store.setTaskDeadline(taskData.taskDeadline);
+    
     // 设置进度为条件设置页面
-    store.progress = 'condition';
+    store.setProgress('condition');
     
     // 导航到条件设置页面
     router.push({
@@ -213,8 +230,14 @@ const fetchSplitTables = async () => {
   try {
     loading.value = true;
     
-    // 调用API从服务端获取数据
-    const response = await getTaskReleaseData(taskId.value);
+    // 只有当任务有效时才调用API
+    if (!isTaskValid.value) {
+      splitTables.value = [];
+      return;
+    }
+    
+    // 调用API从服务端获取数据，使用query中的taskId
+    const response = await getTaskReleaseData(route.query.taskId as string);
     
     // 转换后端返回的数据结构为前端需要的格式
     if (response && response.splitData) {
@@ -241,15 +264,22 @@ const fetchSplitTables = async () => {
   } catch (error) {
     console.error("获取拆分表格数据失败:", error);
     splitTables.value = []; // 出错时设为空数组
-    ElMessage.error("获取表格数据失败，请稍后重试");
+    // 只有当任务有效时才显示错误信息
+    if (isTaskValid.value) {
+      ElMessage.error("获取表格数据失败，请稍后重试");
+    }
   } finally {
     loading.value = false;
   }
 };
 
 onMounted(() => {
-  // 设置进度为任务发布页面
-  store.progress = 'release';
+  // 根据路由query中的taskId设置当前任务
+  if (taskId.value) {
+    store.setCurrentTask(taskId.value);
+    // 设置进度为任务发布页面
+    store.setProgress('release');
+  }
   
   // 初始化表格数据
   fetchSplitTables();

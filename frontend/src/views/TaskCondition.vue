@@ -1,7 +1,6 @@
 <template>
   <div class="task-condition-root">
-    <TaskInfo title="设定条件" :taskId="taskId" :fileName="fileName" :showDivider="true"
-      @task-validity-change="handleTaskValidityChange" />
+    <TaskInfo title="设定条件" :showDivider="true" @task-validity-change="handleTaskValidityChange" />
     <!-- 只有当任务有效时，才显示内容 -->
     <div v-if="isTaskValid" class="info">
       <!-- 任务名称输入框 -->
@@ -11,7 +10,7 @@
           <el-row :gutter="20">
             <el-col :span="14">
               <el-form-item label="任务名称" prop="taskName" :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }]">
-                <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" @blur="validateTaskName" />
+                <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" />
               </el-form-item>
             </el-col>
             <el-col :span="10">
@@ -70,7 +69,8 @@
   <!-- 临时权限展示区域 -->
   <div class="permission-display">
     <h4>当前权限设置</h4>
-    <pre>{{ JSON.stringify(store.permissions, null, 2) }}</pre>
+    <!-- 使用专门的计算属性来展示权限数据 -->
+    <pre>{{ JSON.stringify(displayedPermissions, null, 2) }}</pre>
   </div>
 
 
@@ -85,18 +85,58 @@ import TaskInfo from "../components/TaskInfo.vue";
 import SparkMD5 from "spark-md5";
 import { ElMessage } from "element-plus";
 // 导入API
-import { saveTaskSettings } from "../api/task";
+import { saveTaskSettings, getTaskData } from "../api/task";
+// 导入默认权限函数
+import { getDefaultPermissions } from "../hooks/tablePermission";
 
 const router = useRouter();
 const route = useRoute();
 const store = useTaskStore();
 
-// 从store获取数据
-const taskId = computed(() => store.taskId);
-const fileName = computed(() => store.fileName);
-const split = computed(() => store.split);
-const header = computed(() => store.header);
-const splitData = computed(() => store.splitData);
+// 从路由query获取taskId
+const taskId = computed(() => route.query.taskId as string);
+// 从store获取当前任务数据（与PermissionSettingPanel保持一致的获取方式）
+const currentTask = computed(() => store.currentTask);
+const fileName = computed(() => currentTask.value?.fileName || '');
+const split = computed(() => currentTask.value?.split || false);
+const header = computed(() => currentTask.value?.header || '');
+const splitData = computed(() => currentTask.value?.splitData || []);
+
+// 专门用于权限展示的计算属性，添加详细日志
+const displayedPermissions = computed(() => {
+  console.log('displayedPermissions computed - Store tasks:', store.tasks);
+  console.log('displayedPermissions computed - Store currentTaskId:', store.currentTaskId);
+  
+  // 直接通过taskId查找任务，不依赖store.currentTask getter
+  const task = store.tasks.find(t => t.taskId === store.currentTaskId);
+  console.log('displayedPermissions computed - Found task:', task);
+  
+  // 如果找到任务且有权限，使用该权限
+  if (task) {
+    // 确保任务有完整的权限结构
+    if (!task.permissions) {
+      console.log('displayedPermissions computed - Task has no permissions, creating default');
+      task.permissions = getDefaultPermissions();
+    }
+    
+    // 确保权限结构完整
+    if (!task.permissions.row) {
+      console.log('displayedPermissions computed - Task has no row permissions, creating default');
+      task.permissions.row = { addable: false, deletable: false, sortable: false };
+    }
+    if (!task.permissions.columns) {
+      console.log('displayedPermissions computed - Task has no columns permissions, creating default');
+      task.permissions.columns = [];
+    }
+    
+    console.log('displayedPermissions computed - Returning task permissions:', task.permissions);
+    return task.permissions;
+  }
+  
+  // 如果没有找到任务，返回默认权限
+  console.log('displayedPermissions computed - No task found, returning default permissions');
+  return getDefaultPermissions();
+});
 
 // 拆分表格相关数据
 const splitTables = ref([]);
@@ -151,10 +191,16 @@ const validateTaskInfo = () => {
 // 获取拆分表格数据
 const fetchSplitTables = async () => {
   try {
+    // 确保currentTask存在
+    if (!currentTask.value) {
+      splitTables.value = [];
+      return;
+    }
+    
     // 不拆分的情况：直接使用完整数据作为一个表格
     if (!split.value) {
-      const headers = store.uploadedHeaders;
-      const data = store.uploadedData;
+      const headers = currentTask.value.uploadedHeaders;
+      const data = currentTask.value.uploadedData;
 
       if (headers.length > 0 && data.length > 0) {
         // 将二维数组转换为对象数组
@@ -183,9 +229,12 @@ const fetchSplitTables = async () => {
     }
 
     // 拆分的情况：使用拆分后的数据
-    if (!header.value) return;
+    if (!header.value) {
+      splitTables.value = [];
+      return;
+    }
 
-    // 从 store 获取真实的拆分数据
+    // 从currentTask获取真实的拆分数据
     if (splitData.value && splitData.value.length > 0) {
       splitTables.value = splitData.value.map(item => {
         // 将二维数组转换为对象数组
@@ -225,14 +274,29 @@ const viewTable = (table) => {
 
 
 
-const goToTaskGeneration = () => {
-  // 重置进度为任务生成页面
-  store.progress = 'generation';
+const goToTaskGeneration = async () => {
+  try {
+    // 如果当前是从release环节返回，获取最新任务数据并更新Pinia store
+    if (currentTask.value?.progress === 'release') {
+      const taskData = await getTaskData(taskId.value);
+      store.setUploadedData(taskData.uploadedHeaders, taskData.uploadedData);
+      store.setSplitInfo(taskData.splitEnabled, taskData.selectedHeader);
+      // 更新其他必要的任务信息
+      if (taskData.taskName) store.setTaskName(taskData.taskName);
+      if (taskData.taskDeadline) store.setTaskDeadline(taskData.taskDeadline);
+    }
+    
+    // 重置进度为任务生成页面
+    store.setProgress('generation');
 
-  router.push({
-    path: "/task-generation",
-    query: { taskId: taskId.value }
-  });
+    router.push({
+      path: "/task-generation",
+      query: { taskId: taskId.value }
+    });
+  } catch (error) {
+    console.error("返回任务生成页面失败:", error);
+    ElMessage.error("返回任务生成页面失败，请稍后重试");
+  }
 };
 
 const goHome = () => router.push({ path: "/" });
@@ -273,13 +337,13 @@ const saveSettings = async () => {
       taskName: taskForm.taskName, // 添加任务名称
       taskDeadline: taskForm.taskDeadline, // 添加任务截止日期
       tableLinks: tableCodes, // 只发送随机编码数组
-      uploadedHeaders: store.uploadedHeaders,
-      uploadedData: store.uploadedData,
+      uploadedHeaders: currentTask.value?.uploadedHeaders || [],
+      uploadedData: currentTask.value?.uploadedData || [],
       split: split.value,
       header: header.value,
-      selectedHeader: store.selectedHeader,
-      splitData: store.splitData,
-      permissions: store.permissions
+      selectedHeader: currentTask.value?.selectedHeader || '',
+      splitData: currentTask.value?.splitData || [],
+      permissions: currentTask.value?.permissions || { row: {}, columns: [] }
     };
 
     // 调用API保存设置到服务端
@@ -299,8 +363,48 @@ const saveSettings = async () => {
 };
 
 onMounted(() => {
-  // 设置当前进度为条件设定页面
-  store.progress = 'condition';
+  // 根据路由query中的taskId设置当前任务
+  if (taskId.value) {
+    console.log('TaskCondition - Setting Current Task ID:', taskId.value);
+    
+    // 1. 首先确保任务存在于store中
+    let task = store.tasks.find(t => t.taskId === taskId.value);
+    if (!task) {
+      console.error('TaskCondition - Task not found in store:', taskId.value);
+      // 如果任务不存在，创建一个临时任务（通常这种情况不应该发生）
+      task = {
+        taskId: taskId.value,
+        fileName: '',
+        uploadedHeaders: [],
+        uploadedData: [],
+        split: false,
+        header: '',
+        permissions: getDefaultPermissions()
+      };
+      store.tasks.push(task);
+    }
+    
+    // 2. 确保权限对象存在
+    if (!task.permissions) {
+      task.permissions = getDefaultPermissions();
+      console.log('TaskCondition - Created default permissions for task');
+    }
+    
+    // 3. 设置当前任务ID
+    store.setCurrentTask(taskId.value);
+    
+    // 4. 设置当前进度为条件设定页面
+    store.setProgress('condition');
+    
+    // 5. 加载任务表单数据
+    taskForm.taskName = task.taskName || '';
+    taskForm.taskDeadline = task.taskDeadline || null;
+    
+    // 6. 调试日志：检查权限数据和store状态
+    console.log('TaskCondition - Current Task Permissions:', task.permissions);
+    console.log('TaskCondition - Store Current Task ID:', store.currentTaskId);
+    console.log('TaskCondition - Store Tasks:', store.tasks);
+  }
   // 直接初始化数据，路由参数与store的一致性已由TaskInfo组件检查
   fetchSplitTables();
 });
@@ -312,6 +416,15 @@ watch(
     // 当路由参数变化时，重新初始化数据
     // 路由参数与store的一致性已由TaskInfo组件检查
     fetchSplitTables();
+  },
+  { deep: true }
+);
+
+// 监听权限数据变化，调试用
+watch(
+  () => currentTask.value?.permissions,
+  (newPermissions) => {
+    console.log('TaskCondition - Permissions Changed:', newPermissions);
   },
   { deep: true }
 );

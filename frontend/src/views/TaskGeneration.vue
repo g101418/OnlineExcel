@@ -38,14 +38,29 @@ const route = useRoute();
 const router = useRouter();
 const store = useTaskStore();
 
-// 从store获取数据
-const taskId = computed(() => store.taskId);
-const fileName = computed(() => store.fileName);
-const headers = computed(() => store.uploadedHeaders);
-const rawData = computed(() => store.uploadedData);
+// 从store获取当前任务
+const currentTask = computed(() => store.currentTask);
+
+// 从当前任务获取数据
+const taskId = computed(() => currentTask.value?.taskId || '');
+const fileName = computed(() => currentTask.value?.fileName || '');
+const headers = computed(() => currentTask.value?.uploadedHeaders || []);
+const rawData = computed(() => currentTask.value?.uploadedData || []);
 const hotData = ref<any[]>([]);
-const splitEnabled = ref(store.splitEnabled);
-const selectedHeader = ref(store.selectedHeader);
+const splitEnabled = ref(currentTask.value?.splitEnabled || false);
+const selectedHeader = ref(currentTask.value?.selectedHeader || '');
+
+// 监听当前任务变化，更新本地状态
+watch(
+  () => currentTask.value,
+  (newTask) => {
+    if (newTask) {
+      splitEnabled.value = newTask.splitEnabled || false;
+      selectedHeader.value = newTask.selectedHeader || '';
+    }
+  },
+  { immediate: true, deep: true }
+);
 // 任务有效性状态（由TaskInfo组件传递）
 const isTaskValid = ref(true);
 
@@ -55,18 +70,20 @@ const handleTaskValidityChange = (valid: boolean) => {
 };
 
 onMounted(async () => {
-  // 设置当前进度为任务生成页面
-  store.progress = 'generation';
-  // 直接处理数据，路由参数与store的一致性已由TaskInfo组件检查
-  // 将原始数据转换为表格需要的对象格式
-  if (rawData.value && rawData.value.length && headers.value.length) {
-    hotData.value = rawData.value.map((row: any[]) => {
-      const obj: any = {};
-      headers.value.forEach((hd, idx) => {
-        obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+  if (currentTask.value) {
+    // 设置当前进度为任务生成页面
+    store.setProgress('generation');
+    // 直接处理数据，路由参数与store的一致性已由TaskInfo组件检查
+    // 将原始数据转换为表格需要的对象格式
+    if (rawData.value && rawData.value.length && headers.value.length) {
+      hotData.value = rawData.value.map((row: any[]) => {
+        const obj: any = {};
+        headers.value.forEach((hd, idx) => {
+          obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+        });
+        return obj;
       });
-      return obj;
-    });
+    }
   }
 });
 
@@ -100,9 +117,11 @@ const goHome = () => {
 };
 
 const handleSetConditions = () => {
+  if (!currentTask.value) return;
+  
   // 检查状态是否发生了变更
-  const statusChanged = splitEnabled.value !== store.splitEnabled || 
-                       (splitEnabled.value && selectedHeader.value !== store.selectedHeader);
+  const statusChanged = splitEnabled.value !== currentTask.value.splitEnabled || 
+                       (splitEnabled.value && selectedHeader.value !== currentTask.value.selectedHeader);
 
   if (statusChanged) {
     // 根据当前选择更新store状态
@@ -113,14 +132,11 @@ const handleSetConditions = () => {
     } else {
       // 清除拆分信息
       store.setSplitInfo(false, '');
-      store.split = false;
-      store.header = '';
-      store.splitData = [];
     }
   }
 
   // 设置进度为条件设置页面
-  store.progress = 'condition';
+  store.setProgress('condition');
   router.push({
     path: "/task-condition",
     query: { taskId: taskId.value },

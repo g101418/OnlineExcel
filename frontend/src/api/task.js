@@ -44,3 +44,17 @@ export const withdrawTask = async (taskId) => {
     throw error;
   }
 };
+
+/**
+ * 获取任务完整数据
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 返回任务完整数据
+ */
+export const getTaskData = async (taskId) => {
+  try {
+    return await get(`/task/${taskId}`);
+  } catch (error) {
+    console.error("获取任务数据出错:", error);
+    throw error;
+  }
+};

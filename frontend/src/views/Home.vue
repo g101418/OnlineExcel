@@ -55,15 +55,19 @@
         <h2 class="history-title">历史任务</h2>
         <el-table :data="historicalTables" style="width: 100%; margin-bottom: 20px">
           <el-table-column prop="fileName" label="文件名" min-width="180" />
+          <el-table-column prop="taskName" label="任务名称" min-width="180" />
           <el-table-column prop="taskId" label="任务ID" width="180" />
           <el-table-column prop="dataSize" label="数据大小" width="120">
             <template #default="scope">{{ formatDataSize(scope.row.dataSize) }}</template>
           </el-table-column>
           <el-table-column prop="updateTime" label="更新时间" width="180" />
-          <el-table-column label="操作" width="120">
+          <el-table-column label="操作" width="200">
             <template #default="scope">
               <el-button type="primary" size="small" @click="navigateToTask(scope.row)">
                 处理
+              </el-button>
+              <el-button type="danger" size="small" @click="deleteHistoricalTask(scope.row.taskId)">
+                删除
               </el-button>
             </template>
           </el-table-column>
@@ -78,7 +82,7 @@
 
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import SparkMD5 from "spark-md5";
@@ -122,11 +126,11 @@ const formatDataSize = (bytes) => {
 
 // 导航到任务页面
 const navigateToTask = (table) => {
-  // 根据store中的progress状态决定跳转目标
+  // 根据任务自己的progress状态决定跳转目标
   let targetPath;
-  if (store.progress === 'condition') {
+  if (table.progress === 'condition') {
     targetPath = '/task-condition';
-  } else if (store.progress === 'release') {
+  } else if (table.progress === 'release') {
     targetPath = '/task-release';
   } else {
     targetPath = '/task-generation';
@@ -136,6 +140,41 @@ const navigateToTask = (table) => {
     path: targetPath,
     query: { taskId: table.taskId },
   });
+};
+
+// 删除单个历史任务
+const deleteHistoricalTask = async (taskId) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这个历史任务吗？', '警告', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+    
+    // 获取要删除的任务
+    const task = store.getTask(taskId);
+    if (task) {
+      // 如果任务处在release环节，需要给服务端发消息
+      if (task.progress === 'release') {
+        // TODO: 通知服务端删除任务
+        // 示例API调用: await deleteTask(taskId);
+        console.log(`任务${taskId}处于release环节，需要通知服务端删除`);
+      }
+      
+      // 从store中删除任务
+      store.deleteTask(taskId);
+      
+      // 更新历史表格列表
+      loadHistoricalData();
+      
+      ElMessage.success('任务已删除');
+    }
+  } catch (error) {
+    // 用户取消删除
+    if (error !== 'cancel') {
+      ElMessage.error('删除任务失败');
+    }
+  }
 };
 
 // 清除历史记录
@@ -169,34 +208,42 @@ const clearHistory = async () => {
 
 // 加载历史表格数据
 const loadHistoricalData = () => {
-  if (store.hasTask && store.hasUploadedData) {
+  // 清空当前历史记录
+  historicalTables.value = [];
+  
+  // 遍历store中的所有任务
+  store.tasks.forEach(task => {
     // 计算数据大小
-    const dataSize = calculateDataSize(store.uploadedHeaders, store.uploadedData);
+    const dataSize = calculateDataSize(task.uploadedHeaders, task.uploadedData);
     
     // 创建历史表格项
     const historicalItem = {
-      taskId: store.taskId,
-      fileName: store.fileName,
+      taskId: task.taskId,
+      fileName: task.fileName,
+      taskName: task.taskName,
       dataSize: dataSize,
       updateTime: new Date().toLocaleString('zh-CN'),
+      progress: task.progress
     };
     
-    // 检查是否已存在相同taskId的记录
-    const existingIndex = historicalTables.value.findIndex(item => item.taskId === store.taskId);
-    if (existingIndex >= 0) {
-      // 更新已存在的记录
-      historicalTables.value[existingIndex] = historicalItem;
-    } else {
-      // 添加新记录
-      historicalTables.value.push(historicalItem);
-    }
-  }
+    // 添加到历史记录列表
+    historicalTables.value.push(historicalItem);
+  });
 };
 
 // 页面加载时加载历史表格数据
 onMounted(() => {
   loadHistoricalData();
 });
+
+// 监听store.tasks的变化，当任务列表变化时重新加载历史数据
+watch(
+  () => store.tasks,
+  () => {
+    loadHistoricalData();
+  },
+  { deep: true }
+);
 
 const openUploadDialog = async () => {
   // 检查是否有历史任务存在
@@ -237,10 +284,10 @@ const beforeUpload = (file) => {
     ElMessage.error("只支持 .xls / .xlsx / .csv 格式的文件");
     return false;
   }
-  // max 4MB
-  const isLt20M = file.size / 1024 / 1024 < 4;
-  if (!isLt20M) {
-    ElMessage.error("文件不能超过 4MB");
+  // max 1MB
+  const isLt1M = file.size / 1024 / 1024 < 1;
+  if (!isLt1M) {
+    ElMessage.error("文件不能超过 1MB");
     return false;
   }
   return true;
@@ -250,10 +297,7 @@ const handleChange = (file, fileListArg) => {
   // file.raw is the actual File object
   selectedFile.value = file.raw || file;
   fileList.value = fileListArg;
-  // parse the file and store headers + data into store for TaskRelease view
-  parseFileToStore(selectedFile.value as File).catch((err) => {
-    console.error("parse file error:", err);
-  });
+  // 选择文件时不立即解析，只在点击上传并继续时解析
 };
 
 const parseFileToStore = async (file: File) => {
@@ -265,15 +309,14 @@ const parseFileToStore = async (file: File) => {
     // Use sheet_to_json with header: 1 to get arrays (first row is headers)
     const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
     if (!rows || rows.length === 0) {
-      store.clearUploadedData();
-      return;
+      return { headers: [], dataRows: [] };
     }
     const headers = rows[0].map((h) => (h === null || h === undefined ? "" : String(h)));
     const dataRows = rows.slice(1);
-    store.setUploadedData(headers, dataRows);
+    return { headers, dataRows };
   } catch (err) {
     console.error("failed to parse file:", err);
-    store.clearUploadedData();
+    return { headers: [], dataRows: [] };
   }
 };
 
@@ -299,14 +342,14 @@ const submitUpload = async () => {
   
   try {
     // 确保文件解析完成，重新解析以保证数据最新
-    await parseFileToStore(selectedFile.value as File);
+    const { headers, dataRows } = await parseFileToStore(selectedFile.value as File);
     
     // 检查表头是否重复
-    if (store.uploadedHeaders && store.uploadedHeaders.length > 0) {
+    if (headers && headers.length > 0) {
       const headerSet = new Set();
       const duplicateHeaders = [];
       
-      store.uploadedHeaders.forEach((header, index) => {
+      headers.forEach((header, index) => {
         if (headerSet.has(header)) {
           duplicateHeaders.push({ index: index + 1, name: header });
         } else {
@@ -318,7 +361,6 @@ const submitUpload = async () => {
       if (duplicateHeaders.length > 0) {
         const errorMsg = `表格中存在重复的表头：${duplicateHeaders.map(h => `第${h.index}列 "${h.name}"`).join("、")}`;
         ElMessage.error(errorMsg);
-        store.clearUploadedData();
         selectedFile.value = null;
         fileList.value = [];
         uploading.value = false;
@@ -333,8 +375,11 @@ const submitUpload = async () => {
     clearInterval(uploadInterval);
     uploadProgress.value = 100;
     
-    // 设置任务信息并跳转
-    store.setTaskInfo(clientTaskId, selectedFile.value?.name || "");
+    // 设置任务信息
+    store.createTask(clientTaskId, selectedFile.value?.name || "");
+    
+    // 将解析的数据保存到任务中
+    store.setUploadedData(headers, dataRows);
     
     // 手动触发状态保存，确保数据已写入localStorage
     const saveSuccess = saveState(store.$state);
@@ -351,13 +396,10 @@ const submitUpload = async () => {
   } catch (e) {
     clearInterval(uploadInterval);
     console.error("文件处理失败:", e);
-    store.setTaskInfo(clientTaskId, selectedFile.value?.name || "");
     showUploadDialog.value = false;
-    ElMessage.success("文件处理成功，正在跳转...");
-    router.push({
-      path: "/task-generation",
-      query: { taskId: clientTaskId },
-    });
+    ElMessage.error("文件处理失败，请检查文件格式并重试");
+    uploading.value = false;
+    uploadProgress.value = 0;
   } finally {
     uploading.value = false;
     uploadProgress.value = 0;

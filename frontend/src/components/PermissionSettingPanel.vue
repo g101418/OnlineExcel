@@ -89,9 +89,9 @@
 
           <div v-if="col.validation.type === 'date'" class="date-validation">
             <div class="date-format">
-              <label style="margin-left: 0px; line-height: 32px; margin-right: 5px;">日期格式：</label>
+              <label style="line-height: 32px; white-space: nowrap; width: 70px;">日期格式：</label>
               <el-select v-model="col.validation.format" size="small" style="width: 150px;">
-                <el-option label="无限制" :value="null" />
+                <el-option label="无限制" value="" />
                 <el-option label="yyyy-mm-dd" value="yyyy-mm-dd" />
                 <el-option label="yy-mm-dd" value="yy-mm-dd" />
                 <el-option label="yyyy/mm/dd" value="yyyy/mm/dd" />
@@ -101,19 +101,20 @@
               </el-select>
             </div>
             <div class="date-range">
-              <label style="line-height: 32px; margin-right: 5px;">限定日期范围：</label>
+              <label style="line-height: 32px; white-space: nowrap; width: 90px; margin-right: 5px;">限定日期范围：</label>
               <el-date-picker
                 v-model="col.validation.min"
                 type="date"
                 placeholder="开始日期"
                 size="small"
-                style="margin-right: 10px;"
+                style="flex: 1; min-width: 120px;"
               />
               <el-date-picker
                 v-model="col.validation.max"
                 type="date"
                 placeholder="结束日期"
                 size="small"
+                style="flex: 1; min-width: 120px;"
               />
             </div>
           </div>
@@ -164,6 +165,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useTaskStore } from "../stores/task";
+import { getDefaultPermissions } from "../hooks/tablePermission";
 
 // 定义 props
 const props = defineProps<{
@@ -174,13 +176,15 @@ const props = defineProps<{
 const store = useTaskStore();
 
 // 从 store 获取数据
-const uploadedHeaders = computed(() => store.uploadedHeaders);
-const split = computed(() => store.split);
-const header = computed(() => store.header);
-const rowPermissions = computed(() => store.permissions.row);
+const currentTask = computed(() => store.currentTask);
+const uploadedHeaders = computed(() => currentTask.value?.uploadedHeaders || []);
+const split = computed(() => currentTask.value?.split || false);
+const header = computed(() => currentTask.value?.header || '');
+const storePermissions = computed(() => currentTask.value?.permissions);
 
 // 权限设置相关数据
 const localColumns = ref([]);
+const rowPermissions = ref({ addable: false, deletable: false, sortable: false });
 
 // 常用正则表达式预设
 const regexPresets = ref({
@@ -192,6 +196,11 @@ const regexPresets = ref({
 
 // 初始化列数据
 const initColumns = () => {
+  // 确保store中存在当前任务的权限对象
+  if (currentTask.value && !currentTask.value.permissions) {
+    store.savePermissions(getDefaultPermissions());
+  }
+  
   // 无论是拆分表还是非拆分表，都使用完整的上传表头列表
   if (uploadedHeaders.value.length > 0) {
     localColumns.value = uploadedHeaders.value.map((h, index) => {
@@ -213,16 +222,16 @@ const initColumns = () => {
             isInteger: false,
             regex: "",
             regexName: "",
-            format: null // 设置默认日期格式为无限制
+            format: "" // 设置默认日期格式为无限制（空字符串）
           },
       };
     });
   }
   
   // 如果store中有权限设置，应用到columns
-  if (store.permissions.columns.length > 0) {
+  if (currentTask.value?.permissions?.columns?.length > 0) {
     // 确保options是数组类型
-    localColumns.value = store.permissions.columns.map(column => {
+    localColumns.value = currentTask.value.permissions.columns.map(column => {
       if (column.validation && column.validation.type === 'options') {
         // 如果options是字符串类型，转换为数组
         if (typeof column.validation.options === 'string') {
@@ -236,6 +245,9 @@ const initColumns = () => {
       }
       return column;
     });
+  } else if (localColumns.value.length > 0 && currentTask.value) {
+    // 如果没有已有的权限设置，将默认的列权限保存到store
+    store.setColumnPermissions(localColumns.value);
   }
 };
 
@@ -251,7 +263,7 @@ const updateValidation = (column: any) => {
     isInteger: false,
     regex: "",
     regexName: "",
-    format: null, // 重置日期格式为默认值（无限制）
+    format: "", // 重置日期格式为默认值（无限制）
   };
 };
 
@@ -278,9 +290,26 @@ watch(() => localColumns.value, (newColumns) => {
   }
 }, { deep: true });
 
+// 监听currentTask.permissions变化，初始化本地rowPermissions
+watch(() => currentTask.value?.permissions, (newPermissions) => {
+  if (newPermissions?.row) {
+    // 只有当store中的rowPermissions与本地不同时才更新，避免递归
+    const isDifferent = JSON.stringify(newPermissions.row) !== JSON.stringify(rowPermissions.value);
+    if (isDifferent) {
+      rowPermissions.value = { ...newPermissions.row };
+    }
+  }
+}, { deep: true, immediate: true });
+
 // 监听行权限变化，自动保存到 store
 watch(() => rowPermissions.value, (newRowPermissions) => {
-  store.permissions.row = newRowPermissions;
+  if (newRowPermissions) {
+    // 检查是否与store中的值相同，避免递归
+    const storeRowPermissions = currentTask.value?.permissions?.row || {};
+    if (JSON.stringify(newRowPermissions) !== JSON.stringify(storeRowPermissions)) {
+      store.setRowPermissions(newRowPermissions);
+    }
+  }
 }, { deep: true });
 
 // 组件挂载时初始化
@@ -380,18 +409,31 @@ onMounted(() => {
 
 .date-validation {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
   margin-bottom: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.date-validation .date-format,
+.date-validation .date-format {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  vertical-align: center;
+  width: 250px;
+  flex-shrink: 0;
+}
+
 .date-validation .date-range {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
   vertical-align: center;
+  flex: 1;
+  min-width: 250px;
+  overflow: hidden;
 }
 
 .number-validation input,

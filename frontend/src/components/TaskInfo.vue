@@ -1,20 +1,22 @@
 <template>
   <div class="task-info">
     <!-- 严格检查路由query和store的一致性 -->
-    <div v-if="!route.query.taskId || (route.query.taskId && route.query.taskId !== store.taskId)" class="no-data">
+    <div v-if="!route.query.taskId || !currentTask" class="no-data">
       <p>未检测到任务信息，请返回首页重新上传。</p>
       <el-button type="primary" @click="goHome">返回首页</el-button>
     </div>
     <div v-else>
       <component :is="headingLevel" class="task-title">{{ title }}</component>
       <div class="meta">
+        <p v-if="currentTask.taskName"><strong>任务名称：</strong>{{ currentTask.taskName }}</p>
         <p>
           <strong>任务编号：</strong>
           <el-tooltip content="点击复制任务编号" placement="top">
-            <span class="copy-clickable" @click="copyTaskId(taskId)">{{ taskId }}</span>
+            <span class="copy-clickable" @click="copyTaskId(currentTask.taskId)">{{ currentTask.taskId }}</span>
           </el-tooltip>
         </p>
-        <p v-if="fileName"><strong>文件名：</strong>{{ fileName }}</p>
+        <p v-if="currentTask.fileName"><strong>文件名：</strong>{{ currentTask.fileName }}</p>
+        
       </div>
       <el-divider v-if="showDivider" />
     </div>
@@ -30,8 +32,6 @@ import { useTaskStore } from "../stores/task";
 // 定义组件属性
 interface Props {
   title: string;         // 任务标题
-  taskId: string;        // 任务编号
-  fileName?: string;     // 文件名（可选）
   showDivider?: boolean; // 是否显示分隔线（可选，默认true）
   headingLevel?: 'h1' | 'h2'; // 标题级别（可选，默认h2）
 }
@@ -55,14 +55,24 @@ const store = useTaskStore();
 // 计算属性：标题级别
 const headingLevel = computed(() => props.headingLevel);
 
+// 计算属性：获取当前任务
+const currentTask = computed(() => {
+  if (!route.query.taskId) return null;
+  return store.tasks.find(task => task.taskId === route.query.taskId);
+});
+
 // 计算属性：检查路由query和store是否一致
 const isTaskValid = computed(() => {
-  return !!route.query.taskId && route.query.taskId === store.taskId;
+  if (!route.query.taskId) return false;
+  
+  // 检查本地store中是否存在该taskId的任务
+  const taskExists = store.tasks.some(task => task.taskId === route.query.taskId);
+  return taskExists;
 });
 
 // 监听路由变化，通知父组件任务有效性变化
 watch(
-  () => [route.query.taskId, store.taskId],
+  () => [route.query.taskId, store.tasks],
   () => {
     emit('task-validity-change', isTaskValid.value);
   },
@@ -71,7 +81,16 @@ watch(
 
 // 组件挂载时初始化任务有效性状态
 onMounted(() => {
+  // 设置当前任务
+  if (route.query.taskId) {
+    store.setCurrentTask(route.query.taskId as string);
+  }
+  
   emit('task-validity-change', isTaskValid.value);
+  // 如果任务无效且在condition或generation页面，跳转到error页面
+  if (!isTaskValid.value && (route.path === '/task-condition' || route.path === '/task-generation')) {
+    router.push('/error');
+  }
 });
 
 // 复制任务编号功能
