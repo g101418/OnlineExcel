@@ -138,7 +138,7 @@
             <div class="regex-presets">
               <label>常用正则：</label>
               <el-select v-model="col.validation.regexName" @change="selectRegexPreset(col)" style="width: 100%;">
-                <el-option label="选择预设" value="" />
+                <el-option label="自定义" value="custom" />
                 <el-option label="手机号" value="phone" />
                 <el-option label="身份证号" value="idcard" />
                 <el-option label="邮箱" value="email" />
