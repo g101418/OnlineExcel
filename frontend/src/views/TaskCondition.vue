@@ -9,25 +9,22 @@
         <el-form :model="taskForm" label-width="115px" style="margin-bottom: 20px;">
           <el-row :gutter="20">
             <el-col :span="14">
-              <el-form-item label="任务名称" prop="taskName" :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }, { max: 30, message: '任务名称最长30个字', trigger: ['blur', 'submit'] }]">
+              <el-form-item label="任务名称" prop="taskName"
+                :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }, { max: 30, message: '任务名称最长30个字', trigger: ['blur', 'submit'] }]">
                 <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" maxlength="30" show-word-limit />
               </el-form-item>
             </el-col>
             <el-col :span="10">
-              <el-form-item label="任务截止日期" prop="taskDeadline" :rules="[{ required: true, message: '请选择任务截止日期', trigger: ['blur', 'change'] }]">
-                <el-date-picker
-                  v-model="taskForm.taskDeadline"
-                  type="datetime"
-                  placeholder="请选择日期时间"
-                  :disabledDate="disabledDate"
-                  style="width: 80%"
-                />
+              <el-form-item label="任务截止日期" prop="taskDeadline"
+                :rules="[{ required: true, message: '请选择任务截止日期', trigger: ['blur', 'change'] }]">
+                <el-date-picker v-model="taskForm.taskDeadline" type="datetime" placeholder="请选择日期时间"
+                  :disabledDate="disabledDate" style="width: 80%" />
               </el-form-item>
             </el-col>
           </el-row>
         </el-form>
       </div>
-      
+
       <!-- 显示拆分后的表格列表 -->
       <div v-if="splitTables.length > 0" class="split-tables-list">
         <div class="table-header">
@@ -107,37 +104,28 @@ const splitData = computed(() => currentTask.value?.splitData || []);
 
 // 专门用于权限展示的计算属性，添加详细日志
 const displayedPermissions = computed(() => {
-  console.log('displayedPermissions computed - Store tasks:', store.tasks);
-  console.log('displayedPermissions computed - TaskId from route:', taskId.value);
-  
   // 直接通过taskId查找任务，不依赖store.currentTask getter
   const task = store.tasks.find(t => t.taskId === taskId.value);
-  console.log('displayedPermissions computed - Found task:', task);
-  
+
   // 如果找到任务且有权限，使用该权限
   if (task) {
     // 确保任务有完整的权限结构
     if (!task.permissions) {
-      console.log('displayedPermissions computed - Task has no permissions, creating default');
       task.permissions = getDefaultPermissions();
     }
-    
+
     // 确保权限结构完整
     if (!task.permissions.row) {
-      console.log('displayedPermissions computed - Task has no row permissions, creating default');
       task.permissions.row = { addable: false, deletable: false, sortable: false };
     }
     if (!task.permissions.columns) {
-      console.log('displayedPermissions computed - Task has no columns permissions, creating default');
       task.permissions.columns = [];
     }
-    
-    console.log('displayedPermissions computed - Returning task permissions:', task.permissions);
+
     return task.permissions;
   }
-  
+
   // 如果没有找到任务，返回默认权限
-  console.log('displayedPermissions computed - No task found, returning default permissions');
   return getDefaultPermissions();
 });
 
@@ -159,11 +147,11 @@ const disabledDate = (time: Date) => {
   const nextDay = new Date(today);
   nextDay.setDate(today.getDate() + 1); // 从第二天开始
   nextDay.setHours(0, 0, 0, 0);
-  
+
   const maxDate = new Date(today);
   maxDate.setDate(today.getDate() + 21); // 最长3周（21天）
   maxDate.setHours(23, 59, 59, 999);
-  
+
   // 禁用今天及之前的日期，以及3周之后的日期
   return time.getTime() < nextDay.getTime() || time.getTime() > maxDate.getTime();
 };
@@ -199,7 +187,7 @@ const fetchSplitTables = async () => {
       splitTables.value = [];
       return;
     }
-    
+
     // 不拆分的情况：直接使用完整数据作为一个表格
     if (!split.value) {
       const headers = currentTask.value.uploadedHeaders;
@@ -288,7 +276,7 @@ const goToTaskGeneration = async () => {
       if (taskData.taskName) store.setTaskName(taskId.value, taskData.taskName);
       if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
     }
-    
+
     // 重置进度为任务生成页面
     store.setProgress(taskId.value, 'generation');
 
@@ -328,7 +316,7 @@ const saveSettings = async () => {
       link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
     }));
     store.setTableLinks(taskId.value, tableLinks);
-    
+
     // 将任务名称和截止日期保存到store
     store.setTaskName(taskId.value, taskForm.taskName);
     store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
@@ -368,29 +356,23 @@ const saveSettings = async () => {
 onMounted(() => {
   // 根据路由query中的taskId设置当前任务
   if (taskId.value) {
-    console.log('TaskCondition - Current Task ID from Query:', taskId.value);
-    
     // 1. 查找当前任务
     const task = store.tasks.find(t => t.taskId === taskId.value);
     if (task) {
       // 2. 确保权限对象存在
       if (!task.permissions) {
         task.permissions = getDefaultPermissions();
-        console.log('TaskCondition - Created default permissions for task');
       }
-      
+
       // 3. 设置当前进度为条件设定页面
       store.setProgress(taskId.value, 'condition');
-      
+
       // 4. 加载任务表单数据
       taskForm.taskName = task.taskName || '';
       taskForm.taskDeadline = task.taskDeadline || null;
-      
-      // 5. 调试日志：检查权限数据和store状态
-      console.log('TaskCondition - Current Task Permissions:', task.permissions);
-      console.log('TaskCondition - Store Tasks:', store.tasks);
+
     } else {
-      console.log('TaskCondition - Task not found in store, TaskInfo will handle redirection');
+
     }
   }
   // 直接初始化数据，路由参数与store的一致性已由TaskInfo组件检查
@@ -404,15 +386,6 @@ watch(
     // 当路由参数变化时，重新初始化数据
     // 路由参数与store的一致性已由TaskInfo组件检查
     fetchSplitTables();
-  },
-  { deep: true }
-);
-
-// 监听权限数据变化，调试用
-watch(
-  () => currentTask.value?.permissions,
-  (newPermissions) => {
-    console.log('TaskCondition - Permissions Changed:', newPermissions);
   },
   { deep: true }
 );
