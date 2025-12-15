@@ -127,10 +127,9 @@
           </div>
 
           <div v-if="col.validation.type === 'options'" class="options-validation">
-            <input
-              type="text"
+            <el-input-tag
               v-model="col.validation.options"
-              placeholder="选项(逗号分隔)"
+              placeholder="请输入选项，回车确认（可输入多个选项）"
             />
           </div>
 
@@ -206,23 +205,37 @@ const initColumns = () => {
         editable: !(isSplitColumn || (!split.value && index === 0)),
         required: false,
         validation: {
-          type: "",
-          min: null,
-          max: null,
-          maxLength: null,
-          options: "",
-          isInteger: false,
-          regex: "",
-          regexName: "",
-          format: null // 设置默认日期格式为无限制
-        },
+            type: "",
+            min: null,
+            max: null,
+            maxLength: null,
+            options: [],
+            isInteger: false,
+            regex: "",
+            regexName: "",
+            format: null // 设置默认日期格式为无限制
+          },
       };
     });
   }
   
   // 如果store中有权限设置，应用到columns
   if (store.permissions.columns.length > 0) {
-    localColumns.value = store.permissions.columns;
+    // 确保options是数组类型
+    localColumns.value = store.permissions.columns.map(column => {
+      if (column.validation && column.validation.type === 'options') {
+        // 如果options是字符串类型，转换为数组
+        if (typeof column.validation.options === 'string') {
+          column.validation.options = column.validation.options
+            ? column.validation.options.split(',').map(opt => opt.trim())
+            : [];
+        } else if (!Array.isArray(column.validation.options)) {
+          // 如果不是字符串也不是数组，设为空数组
+          column.validation.options = [];
+        }
+      }
+      return column;
+    });
   }
 };
 
@@ -234,7 +247,7 @@ const updateValidation = (column: any) => {
     min: null,
     max: null,
     maxLength: null,
-    options: "",
+    options: [],
     isInteger: false,
     regex: "",
     regexName: "",

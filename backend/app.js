@@ -14,6 +14,8 @@ app.use(bodyParser.json());
 app.post('/api/save-task', (req, res) => {
   const {
     taskId,
+    taskName,
+    taskDeadline,
     fileName,
     uploadedHeaders,
     uploadedData,
@@ -25,7 +27,7 @@ app.post('/api/save-task', (req, res) => {
     tableLinks = []
   } = req.body;
   
-  if (!taskId || !fileName || !uploadedHeaders || !uploadedData || !splitData || !permissions) {
+  if (!taskId || !taskName || !fileName || !uploadedHeaders || !uploadedData || !splitData || !permissions) {
     return res.status(400).json({ error: 'Required fields are missing' });
   }
   
@@ -46,13 +48,15 @@ app.post('/api/save-task', (req, res) => {
     
     // 如果不存在，执行插入操作
     const sql = `INSERT INTO tasks (
-      taskId, fileName, uploadedHeaders, uploadedData, 
+      taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
       selectedHeader, split, header, 
       splitData, permissions, tableLinks
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     
     db.run(sql, [
       taskId,
+      taskName,
+      taskDeadline,
       fileName,
       JSON.stringify(uploadedHeaders),
       JSON.stringify(uploadedData),
@@ -70,6 +74,8 @@ app.post('/api/save-task', (req, res) => {
       res.status(201).json({
         id: this.lastID,
         taskId,
+        taskName,
+        taskDeadline,
         fileName,
         message: 'Task saved successfully'
       });

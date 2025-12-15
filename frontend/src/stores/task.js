@@ -33,6 +33,8 @@ export const saveState = (state) => {
     const stateToSave = {
       taskId: state.taskId,
       fileName: state.fileName,
+      taskName: state.taskName,
+      taskDeadline: state.taskDeadline,
       uploadedHeaders: state.uploadedHeaders,
       uploadedData: state.uploadedData,
       splitEnabled: state.splitEnabled,
@@ -70,6 +72,8 @@ export const useTaskStore = defineStore('task', {
       // 任务信息
       taskId: '',
       fileName: '',
+      taskName: '',
+      taskDeadline: null,
       
       // 上传的数据
       uploadedHeaders: [],
@@ -196,10 +200,26 @@ export const useTaskStore = defineStore('task', {
       saveState(this.$state)
     },
     
+    // 设置任务名称
+    setTaskName(taskName) {
+      this.taskName = taskName
+      // 保存状态到本地存储
+      saveState(this.$state)
+    },
+    
+    // 设置任务截止日期
+    setTaskDeadline(taskDeadline) {
+      this.taskDeadline = taskDeadline
+      // 保存状态到本地存储
+      saveState(this.$state)
+    },
+    
     // 清除所有任务数据
     clearAll() {
       this.taskId = ''
       this.fileName = ''
+      this.taskName = ''
+      this.taskDeadline = null
       this.uploadedHeaders = []
       this.uploadedData = []
       this.splitEnabled = false

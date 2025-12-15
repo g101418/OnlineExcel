@@ -11,6 +11,8 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
     db.run(`CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       taskId TEXT NOT NULL UNIQUE,
+      taskName TEXT NOT NULL,
+      taskDeadline DATETIME,
       fileName TEXT NOT NULL,
       tableLinks JSON NOT NULL DEFAULT '[]',
       uploadedHeaders JSON NOT NULL,
@@ -28,6 +30,34 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
         console.error(err.message);
       } else {
         console.log('Created tasks table.');
+      }
+    });
+    
+    // 为已存在的表添加taskName字段
+    db.run(`ALTER TABLE tasks ADD COLUMN taskName TEXT NOT NULL DEFAULT ''`, (err) => {
+      if (err) {
+        // 如果是"duplicate column name"错误，忽略它
+        if (!err.message.includes('duplicate column name')) {
+          console.error(err.message);
+        } else {
+          console.log('taskName column already exists in tasks table.');
+        }
+      } else {
+        console.log('Added taskName column to tasks table.');
+      }
+    });
+    
+    // 为已存在的表添加taskDeadline字段
+    db.run(`ALTER TABLE tasks ADD COLUMN taskDeadline DATETIME`, (err) => {
+      if (err) {
+        // 如果是"duplicate column name"错误，忽略它
+        if (!err.message.includes('duplicate column name')) {
+          console.error(err.message);
+        } else {
+          console.log('taskDeadline column already exists in tasks table.');
+        }
+      } else {
+        console.log('Added taskDeadline column to tasks table.');
       }
     });
     

@@ -4,6 +4,31 @@
       @task-validity-change="handleTaskValidityChange" />
     <!-- 只有当任务有效时，才显示内容 -->
     <div v-if="isTaskValid" class="info">
+      <!-- 任务名称输入框 -->
+      <div class="task-name-input">
+        <h3>任务信息</h3>
+        <el-form :model="taskForm" label-width="115px" style="margin-bottom: 20px;">
+          <el-row :gutter="20">
+            <el-col :span="14">
+              <el-form-item label="任务名称" prop="taskName" :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }]">
+                <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" @blur="validateTaskName" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="10">
+              <el-form-item label="任务截止日期" prop="taskDeadline" :rules="[{ required: true, message: '请选择任务截止日期', trigger: ['blur', 'change'] }]">
+                <el-date-picker
+                  v-model="taskForm.taskDeadline"
+                  type="datetime"
+                  placeholder="请选择日期时间"
+                  :disabledDate="disabledDate"
+                  style="width: 80%"
+                />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
+      </div>
+      
       <!-- 显示拆分后的表格列表 -->
       <div v-if="splitTables.length > 0" class="split-tables-list">
         <div class="table-header">
@@ -78,8 +103,27 @@ const splitTables = ref([]);
 const dialogVisible = ref(false);
 const currentTable = ref({});
 
-// 权限设置相关数据
-// 权限管理已迁移到 PermissionSettingPanel.vue 组件中
+// 任务表单数据
+const taskForm = reactive({
+  taskName: '',
+  taskDeadline: null
+});
+
+// 日期禁用规则：从第二天开始，最长3周
+const disabledDate = (time: Date) => {
+  // 计算今天和3周后的日期
+  const today = new Date();
+  const nextDay = new Date(today);
+  nextDay.setDate(today.getDate() + 1); // 从第二天开始
+  nextDay.setHours(0, 0, 0, 0);
+  
+  const maxDate = new Date(today);
+  maxDate.setDate(today.getDate() + 21); // 最长3周（21天）
+  maxDate.setHours(23, 59, 59, 999);
+  
+  // 禁用今天及之前的日期，以及3周之后的日期
+  return time.getTime() < nextDay.getTime() || time.getTime() > maxDate.getTime();
+};
 
 // 任务有效性状态（由TaskInfo组件传递）
 const isTaskValid = ref(true);
@@ -87,6 +131,19 @@ const isTaskValid = ref(true);
 // 处理任务有效性变化
 const handleTaskValidityChange = (valid: boolean) => {
   isTaskValid.value = valid;
+};
+
+// 任务信息验证
+const validateTaskInfo = () => {
+  if (!taskForm.taskName.trim()) {
+    ElMessage.warning('请输入任务名称');
+    return false;
+  }
+  if (!taskForm.taskDeadline) {
+    ElMessage.warning('请选择任务截止日期');
+    return false;
+  }
+  return true;
 };
 
 
@@ -181,6 +238,11 @@ const goToTaskGeneration = () => {
 const goHome = () => router.push({ path: "/" });
 
 const saveSettings = async () => {
+  // 验证任务信息
+  if (!validateTaskInfo()) {
+    return;
+  }
+
   try {
     // 生成表格随机编码
     const generateTableCode = (table, index) => {
@@ -199,11 +261,17 @@ const saveSettings = async () => {
       link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
     }));
     store.setTableLinks(tableLinks);
+    
+    // 将任务名称和截止日期保存到store
+    store.setTaskName(taskForm.taskName);
+    store.setTaskDeadline(taskForm.taskDeadline);
 
     // 准备发送到服务端的数据
     const taskData = {
       taskId: taskId.value,
       fileName: fileName.value,
+      taskName: taskForm.taskName, // 添加任务名称
+      taskDeadline: taskForm.taskDeadline, // 添加任务截止日期
       tableLinks: tableCodes, // 只发送随机编码数组
       uploadedHeaders: store.uploadedHeaders,
       uploadedData: store.uploadedData,
@@ -256,6 +324,21 @@ watch(
 
 .info {
   margin-top: 10px;
+}
+
+.task-name-input {
+  background-color: #f5f7fa;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  border: 1px solid #e4e7ed;
+}
+
+.task-name-input h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: #303133;
 }
 
 .info p {
