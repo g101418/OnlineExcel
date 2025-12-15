@@ -11,24 +11,10 @@
       <el-button class="start-btn" size="large" type="primary" @click="openUploadDialog">
         上传表格开始任务
       </el-button>
-      <el-dialog
-        title="上传表格"
-        v-model="showUploadDialog"
-        append-to-body
-        width="680px"
-        @close="onDialogClose"
-      >
+      <el-dialog title="上传表格" v-model="showUploadDialog" append-to-body width="680px" @close="onDialogClose">
         <div class="dialog-content">
-          <el-upload
-            class="upload-demo"
-            :before-upload="beforeUpload"
-            :auto-upload="false"
-            accept=".xls,.xlsx,.csv"
-            :on-change="handleChange"
-            :file-list="fileList"
-            :limit="1"
-            drag
-          >
+          <el-upload class="upload-demo" :before-upload="beforeUpload" :auto-upload="false" accept=".xls,.xlsx,.csv"
+            :on-change="handleChange" :file-list="fileList" :limit="1" drag>
             <i class="el-icon-upload"></i>
             <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
             <div class="el-upload__tip">仅支持后缀为 .xls/.xlsx/.csv 的表格文件</div>
@@ -40,12 +26,7 @@
         <template #footer>
           <span class="dialog-footer">
             <el-button @click="onDialogClose">取消</el-button>
-            <el-button
-              type="primary"
-              :disabled="!selectedFile || uploading"
-              @click="submitUpload"
-              >上传并继续</el-button
-            >
+            <el-button type="primary" :disabled="!selectedFile || uploading" @click="submitUpload">上传并继续</el-button>
           </span>
         </template>
       </el-dialog>
@@ -57,19 +38,18 @@
           <el-table-column prop="fileName" label="文件名" min-width="180" />
           <el-table-column prop="taskName" label="任务名称" min-width="180" />
           <el-table-column prop="taskId" label="任务ID" width="180" />
-          <el-table-column prop="dataSize" label="数据大小" width="120">
-            <template #default="scope">{{ formatDataSize(scope.row.dataSize) }}</template>
-          </el-table-column>
           <el-table-column label="任务状态" width="160">
             <template #default="scope">
-              <el-tag 
-                :type="getStatusType(scope.row.progress)" 
-                :effect="scope.row.progress === 'release' ? 'dark' : 'light'"
-              >
+              <el-tag :type="getStatusType(scope.row.progress)"
+                :effect="scope.row.progress === 'release' ? 'dark' : 'light'">
                 {{ getStatusText(scope.row.progress) }}
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column prop="dataSize" label="数据大小" width="120">
+            <template #default="scope">{{ formatDataSize(scope.row.dataSize) }}</template>
+          </el-table-column>
+
 
           <el-table-column label="操作" width="200">
             <template #default="scope">
@@ -167,7 +147,7 @@ const navigateToTask = (table) => {
   } else {
     targetPath = '/task-generation';
   }
-  
+
   router.push({
     path: targetPath,
     query: { taskId: table.taskId },
@@ -182,7 +162,7 @@ const deleteHistoricalTask = async (taskId) => {
       cancelButtonText: '取消',
       type: 'warning',
     });
-    
+
     // 获取要删除的任务
     const task = store.getTask(taskId);
     if (task) {
@@ -192,13 +172,13 @@ const deleteHistoricalTask = async (taskId) => {
         // 示例API调用: await deleteTask(taskId);
         console.log(`任务${taskId}处于release环节，需要通知服务端删除`);
       }
-      
+
       // 从store中删除任务
       store.deleteTask(taskId);
-      
+
       // 更新历史表格列表
       loadHistoricalData();
-      
+
       ElMessage.success('任务已删除');
     }
   } catch (error) {
@@ -217,18 +197,18 @@ const clearHistory = async () => {
       cancelButtonText: '取消',
       type: 'warning',
     });
-    
+
     // TODO: 通知服务端删除任务
     // 1. 获取所有历史任务的taskId
     // 2. 调用后端API批量删除任务
     // 示例API调用: await deleteTasks(historicalTables.value.map(table => table.taskId));
-    
+
     // 清除store中的数据
     store.clearAll();
-    
+
     // 清空历史表格列表
     historicalTables.value = [];
-    
+
     ElMessage.success('历史记录已清除');
   } catch (error) {
     // 用户取消清除
@@ -242,12 +222,12 @@ const clearHistory = async () => {
 const loadHistoricalData = () => {
   // 清空当前历史记录
   historicalTables.value = [];
-  
+
   // 遍历store中的所有任务
   store.tasks.forEach(task => {
     // 计算数据大小
     const dataSize = calculateDataSize(task.uploadedHeaders, task.uploadedData);
-    
+
     // 创建历史表格项
     const historicalItem = {
       taskId: task.taskId,
@@ -257,7 +237,7 @@ const loadHistoricalData = () => {
       updateTime: task.updateTime,
       progress: task.progress
     };
-    
+
     // 添加到历史记录列表
     historicalTables.value.push(historicalItem);
   });
@@ -345,23 +325,23 @@ const submitUpload = async () => {
   uploading.value = true;
   uploadProgress.value = 0;
   const clientTaskId = generateTaskId(selectedFile.value as File);
-  
+
   // 模拟上传进度
   const uploadInterval = setInterval(() => {
     if (uploadProgress.value < 90) {
       uploadProgress.value += 10;
     }
   }, 200);
-  
+
   try {
     // 确保文件解析完成，重新解析以保证数据最新
     const { headers, dataRows } = await parseFileToStore(selectedFile.value as File);
-    
+
     // 检查表头是否重复
     if (headers && headers.length > 0) {
       const headerSet = new Set();
       const duplicateHeaders = [];
-      
+
       headers.forEach((header, index) => {
         if (headerSet.has(header)) {
           duplicateHeaders.push({ index: index + 1, name: header });
@@ -369,7 +349,7 @@ const submitUpload = async () => {
           headerSet.add(header);
         }
       });
-      
+
       // 如果有重复的表头，显示错误消息并终止上传过程
       if (duplicateHeaders.length > 0) {
         const errorMsg = `表格中存在重复的表头：${duplicateHeaders.map(h => `第${h.index}列 "${h.name}"`).join("、")}`;
@@ -381,25 +361,25 @@ const submitUpload = async () => {
         return;
       }
     }
-    
+
     // 直接执行前端逻辑，不调用后端API
     await new Promise(resolve => setTimeout(resolve, 500)); // 缩短模拟处理时间
-    
+
     clearInterval(uploadInterval);
     uploadProgress.value = 100;
-    
+
     // 设置任务信息
     store.createTask(clientTaskId, selectedFile.value?.name || "");
-    
+
     // 将解析的数据保存到任务中
     store.setUploadedData(clientTaskId, headers, dataRows);
-    
+
     // 手动触发状态保存，确保数据已写入localStorage
     const saveSuccess = saveState(store.$state);
     if (!saveSuccess) {
       ElMessage.warning("数据保存空间不足，刷新页面可能导致数据丢失");
     }
-    
+
     showUploadDialog.value = false;
     ElMessage.success("文件处理成功，正在跳转...");
     router.push({
@@ -422,10 +402,10 @@ const submitUpload = async () => {
 const generateTaskId = (file: File) => {
   // 原有逻辑：仅包含年月日
   // const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
-  
+
   // 新逻辑：包含年月日时分秒
   const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, ""); // YYYYMMDDHHmmss
-  
+
   const baseName = file.name || "";
   const metaStr = `${dateStr}:${baseName}:${file.size}:${file.lastModified || 0}`;
   return SparkMD5.hash(metaStr).slice(0, 24);
@@ -516,11 +496,11 @@ const generateTaskId = (file: File) => {
   .history-section {
     margin-top: 30px;
   }
-  
+
   .history-title {
     font-size: 16px;
   }
-  
+
   .el-table {
     font-size: 12px;
   }
@@ -534,11 +514,12 @@ const generateTaskId = (file: File) => {
   .title {
     font-size: 24px;
   }
+
   .start-btn {
     font-size: 16px;
     height: 44px;
   }
-  
+
   .history-section {
     margin-top: 24px;
   }
