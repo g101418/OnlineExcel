@@ -65,6 +65,28 @@
         <div class="clear-history">
           <el-button size="small" text @click="clearHistory">清除历史任务</el-button>
         </div>
+
+        <!-- 根据任务ID获取任务链接 -->
+        <div class="get-task-link">
+          <h3 class="get-task-link-title">根据任务ID跳转任务页面</h3>
+          <div class="get-task-link-form">
+            <el-input 
+              v-model="taskIdInput" 
+              placeholder="请输入任务ID" 
+              class="task-id-input"
+              :error="inputError"
+            />
+            <el-button 
+              type="primary" 
+              size="small" 
+              @click="getTaskByLink"
+              class="jump-btn"
+            >
+              跳转任务页面
+            </el-button>
+          </div>
+          <p v-if="inputError" class="error-message">{{ inputError }}</p>
+        </div>
       </div>
     </div>
   </div>
@@ -94,6 +116,65 @@ const uploadProgress = ref(0);
 // 历史表格信息
 const historicalTables = ref([]);
 const hasHistoricalData = computed(() => historicalTables.value.length > 0);
+
+// 根据任务ID获取任务链接
+const taskIdInput = ref('');
+const inputError = ref('');
+
+// 根据任务ID获取任务并跳转
+const getTaskByLink = async () => {
+  // 清除之前的错误信息
+  inputError.value = '';
+  
+  if (!taskIdInput.value.trim()) {
+    inputError.value = '请输入任务ID';
+    return;
+  }
+  
+  const taskId = taskIdInput.value.trim();
+  
+  // 先检查本地是否有该任务
+  const localTask = store.getTask(taskId);
+  if (localTask) {
+    // 如果本地任务状态为release，直接跳转到release页面
+    if (localTask.progress === 'release') {
+      router.push({ path: '/task-release', query: { taskId } });
+      return;
+    } else {
+      // 否则根据任务当前进度跳转
+      let targetPath;
+      if (localTask.progress === 'condition') {
+        targetPath = '/task-condition';
+      } else if (localTask.progress === 'completed') {
+        targetPath = '/task-release'; // 完成的任务也显示在release页面
+      } else {
+        targetPath = '/task-generation';
+      }
+      router.push({ path: targetPath, query: { taskId } });
+      return;
+    }
+  }
+  
+  // 本地没有该任务，需要与服务器交互
+  try {
+    // TODO: 调用服务器API验证任务ID并获取任务信息
+    // 示例API调用: const serverTask = await getTaskFromServer(taskId);
+    
+    // 模拟服务器返回任务信息
+    const serverTask = { progress: 'release' };
+    
+    // 假设服务器返回任务存在且状态为release
+    if (serverTask && serverTask.progress === 'release') {
+      // TODO: 如果任务在服务器但不在本地，可能需要将任务信息同步到本地存储
+      router.push({ path: '/task-release', query: { taskId } });
+    } else {
+      inputError.value = '无效的任务ID或任务状态不允许跳转';
+    }
+  } catch (error) {
+    console.error('获取任务信息失败:', error);
+    inputError.value = '获取任务信息失败，请稍后重试';
+  }
+};
 
 // 计算历史表格数据大小
 const calculateDataSize = (headers, data) => {
@@ -506,6 +587,50 @@ const generateTaskId = (file: File) => {
   }
 }
 
+/* 根据任务ID获取任务链接样式 */
+.get-task-link {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.get-task-link-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  text-align: center;
+}
+
+.get-task-link-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-id-input {
+  width: 300px;
+}
+
+.error-message {
+  margin: 8px 0 0 0;
+  color: #f56c6c;
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .get-task-link-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .task-id-input {
+    width: 100%;
+  }
+}
+
 @media (max-width: 480px) {
   .home-card {
     padding: 36px 20px;
@@ -514,13 +639,16 @@ const generateTaskId = (file: File) => {
   .title {
     font-size: 24px;
   }
-
   .start-btn {
     font-size: 16px;
     height: 44px;
   }
-
+  
   .history-section {
+    margin-top: 24px;
+  }
+  
+  .get-task-link {
     margin-top: 24px;
   }
 }
