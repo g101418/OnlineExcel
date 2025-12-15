@@ -9,8 +9,8 @@
         <el-form :model="taskForm" label-width="115px" style="margin-bottom: 20px;">
           <el-row :gutter="20">
             <el-col :span="14">
-              <el-form-item label="任务名称" prop="taskName" :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }]">
-                <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" />
+              <el-form-item label="任务名称" prop="taskName" :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }, { max: 30, message: '任务名称最长30个字', trigger: ['blur', 'submit'] }]">
+                <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" maxlength="30" show-word-limit />
               </el-form-item>
             </el-col>
             <el-col :span="10">
@@ -415,6 +415,26 @@ watch(
     console.log('TaskCondition - Permissions Changed:', newPermissions);
   },
   { deep: true }
+);
+
+// 监听任务名称变化，实时保存到store
+watch(
+  () => taskForm.taskName,
+  (newName) => {
+    if (taskId.value) {
+      store.setTaskName(taskId.value, newName);
+    }
+  }
+);
+
+// 监听任务截止日期变化，实时保存到store
+watch(
+  () => taskForm.taskDeadline,
+  (newDeadline) => {
+    if (taskId.value) {
+      store.setTaskDeadline(taskId.value, newDeadline);
+    }
+  }
 );
 </script>
 
