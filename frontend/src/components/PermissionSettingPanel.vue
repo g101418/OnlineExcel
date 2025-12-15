@@ -175,8 +175,18 @@ const props = defineProps<{
 // 导入 store
 const store = useTaskStore();
 
+// 导入路由
+import { useRoute } from 'vue-router';
+const route = useRoute();
+
+// 从路由获取taskId
+const taskId = computed(() => route.query.taskId as string);
+
 // 从 store 获取数据
-const currentTask = computed(() => store.currentTask);
+const currentTask = computed(() => {
+  if (!taskId.value) return null;
+  return store.getTask(taskId.value);
+});
 const uploadedHeaders = computed(() => currentTask.value?.uploadedHeaders || []);
 const split = computed(() => currentTask.value?.split || false);
 const header = computed(() => currentTask.value?.header || '');
@@ -196,9 +206,12 @@ const regexPresets = ref({
 
 // 初始化列数据
 const initColumns = () => {
+  // 确保taskId存在
+  if (!taskId.value) return;
+  
   // 确保store中存在当前任务的权限对象
   if (currentTask.value && !currentTask.value.permissions) {
-    store.savePermissions(getDefaultPermissions());
+    store.savePermissions(taskId.value, getDefaultPermissions());
   }
   
   // 无论是拆分表还是非拆分表，都使用完整的上传表头列表
@@ -247,7 +260,7 @@ const initColumns = () => {
     });
   } else if (localColumns.value.length > 0 && currentTask.value) {
     // 如果没有已有的权限设置，将默认的列权限保存到store
-    store.setColumnPermissions(localColumns.value);
+    store.setColumnPermissions(taskId.value, localColumns.value);
   }
 };
 
@@ -286,7 +299,7 @@ watch(() => props.columns, (newColumns) => {
 // 监听权限设置变化，自动保存到 store
 watch(() => localColumns.value, (newColumns) => {
   if (newColumns && newColumns.length > 0) {
-    store.setColumnPermissions(newColumns);
+    store.setColumnPermissions(taskId.value, newColumns);
   }
 }, { deep: true });
 
@@ -307,7 +320,7 @@ watch(() => rowPermissions.value, (newRowPermissions) => {
     // 检查是否与store中的值相同，避免递归
     const storeRowPermissions = currentTask.value?.permissions?.row || {};
     if (JSON.stringify(newRowPermissions) !== JSON.stringify(storeRowPermissions)) {
-      store.setRowPermissions(newRowPermissions);
+      store.setRowPermissions(taskId.value, newRowPermissions);
     }
   }
 }, { deep: true });

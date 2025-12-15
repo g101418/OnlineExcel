@@ -81,11 +81,6 @@ watch(
 
 // 组件挂载时初始化任务有效性状态
 onMounted(() => {
-  // 设置当前任务
-  if (route.query.taskId) {
-    store.setCurrentTask(route.query.taskId as string);
-  }
-  
   emit('task-validity-change', isTaskValid.value);
   // 如果任务无效且在condition或generation页面，跳转到error页面
   if (!isTaskValid.value && (route.path === '/task-condition' || route.path === '/task-generation')) {

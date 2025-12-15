@@ -186,14 +186,14 @@ const goToTaskCondition = async () => {
     // 调用API获取最新任务数据并更新Pinia store
     const taskData = await getTaskData(taskId.value);
     // 更新当前任务的信息
-    store.setUploadedData(taskData.uploadedHeaders, taskData.uploadedData);
-    store.setSplitInfo(taskData.splitEnabled, taskData.selectedHeader);
+    store.setUploadedData(taskId.value, taskData.uploadedHeaders, taskData.uploadedData);
+    store.setSplitInfo(taskId.value, taskData.splitEnabled, taskData.selectedHeader);
     // 更新其他必要的任务信息
-    if (taskData.taskName) store.setTaskName(taskData.taskName);
-    if (taskData.taskDeadline) store.setTaskDeadline(taskData.taskDeadline);
+    if (taskData.taskName) store.setTaskName(taskId.value, taskData.taskName);
+    if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
     
     // 设置进度为条件设置页面
-    store.setProgress('condition');
+    store.setProgress(taskId.value, 'condition');
     
     // 导航到条件设置页面
     router.push({
@@ -276,9 +276,8 @@ const fetchSplitTables = async () => {
 onMounted(() => {
   // 根据路由query中的taskId设置当前任务
   if (taskId.value) {
-    store.setCurrentTask(taskId.value);
     // 设置进度为任务发布页面
-    store.setProgress('release');
+    store.setProgress(taskId.value, 'release');
   }
   
   // 初始化表格数据

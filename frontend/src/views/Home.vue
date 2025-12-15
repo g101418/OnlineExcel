@@ -379,7 +379,7 @@ const submitUpload = async () => {
     store.createTask(clientTaskId, selectedFile.value?.name || "");
     
     // 将解析的数据保存到任务中
-    store.setUploadedData(headers, dataRows);
+    store.setUploadedData(clientTaskId, headers, dataRows);
     
     // 手动触发状态保存，确保数据已写入localStorage
     const saveSuccess = saveState(store.$state);

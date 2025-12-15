@@ -96,7 +96,10 @@ const store = useTaskStore();
 // 从路由query获取taskId
 const taskId = computed(() => route.query.taskId as string);
 // 从store获取当前任务数据（与PermissionSettingPanel保持一致的获取方式）
-const currentTask = computed(() => store.currentTask);
+const currentTask = computed(() => {
+  if (!taskId.value) return null;
+  return store.tasks.find(task => task.taskId === taskId.value);
+});
 const fileName = computed(() => currentTask.value?.fileName || '');
 const split = computed(() => currentTask.value?.split || false);
 const header = computed(() => currentTask.value?.header || '');
@@ -105,10 +108,10 @@ const splitData = computed(() => currentTask.value?.splitData || []);
 // 专门用于权限展示的计算属性，添加详细日志
 const displayedPermissions = computed(() => {
   console.log('displayedPermissions computed - Store tasks:', store.tasks);
-  console.log('displayedPermissions computed - Store currentTaskId:', store.currentTaskId);
+  console.log('displayedPermissions computed - TaskId from route:', taskId.value);
   
   // 直接通过taskId查找任务，不依赖store.currentTask getter
-  const task = store.tasks.find(t => t.taskId === store.currentTaskId);
+  const task = store.tasks.find(t => t.taskId === taskId.value);
   console.log('displayedPermissions computed - Found task:', task);
   
   // 如果找到任务且有权限，使用该权限
@@ -279,15 +282,15 @@ const goToTaskGeneration = async () => {
     // 如果当前是从release环节返回，获取最新任务数据并更新Pinia store
     if (currentTask.value?.progress === 'release') {
       const taskData = await getTaskData(taskId.value);
-      store.setUploadedData(taskData.uploadedHeaders, taskData.uploadedData);
-      store.setSplitInfo(taskData.splitEnabled, taskData.selectedHeader);
+      store.setUploadedData(taskId.value, taskData.uploadedHeaders, taskData.uploadedData);
+      store.setSplitInfo(taskId.value, taskData.splitEnabled, taskData.selectedHeader);
       // 更新其他必要的任务信息
-      if (taskData.taskName) store.setTaskName(taskData.taskName);
-      if (taskData.taskDeadline) store.setTaskDeadline(taskData.taskDeadline);
+      if (taskData.taskName) store.setTaskName(taskId.value, taskData.taskName);
+      if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
     }
     
     // 重置进度为任务生成页面
-    store.setProgress('generation');
+    store.setProgress(taskId.value, 'generation');
 
     router.push({
       path: "/task-generation",
@@ -324,11 +327,11 @@ const saveSettings = async () => {
       code: tableCodes[index],
       link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
     }));
-    store.setTableLinks(tableLinks);
+    store.setTableLinks(taskId.value, tableLinks);
     
     // 将任务名称和截止日期保存到store
-    store.setTaskName(taskForm.taskName);
-    store.setTaskDeadline(taskForm.taskDeadline);
+    store.setTaskName(taskId.value, taskForm.taskName);
+    store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
 
     // 准备发送到服务端的数据
     const taskData = {
@@ -365,45 +368,30 @@ const saveSettings = async () => {
 onMounted(() => {
   // 根据路由query中的taskId设置当前任务
   if (taskId.value) {
-    console.log('TaskCondition - Setting Current Task ID:', taskId.value);
+    console.log('TaskCondition - Current Task ID from Query:', taskId.value);
     
-    // 1. 首先确保任务存在于store中
-    let task = store.tasks.find(t => t.taskId === taskId.value);
-    if (!task) {
-      console.error('TaskCondition - Task not found in store:', taskId.value);
-      // 如果任务不存在，创建一个临时任务（通常这种情况不应该发生）
-      task = {
-        taskId: taskId.value,
-        fileName: '',
-        uploadedHeaders: [],
-        uploadedData: [],
-        split: false,
-        header: '',
-        permissions: getDefaultPermissions()
-      };
-      store.tasks.push(task);
+    // 1. 查找当前任务
+    const task = store.tasks.find(t => t.taskId === taskId.value);
+    if (task) {
+      // 2. 确保权限对象存在
+      if (!task.permissions) {
+        task.permissions = getDefaultPermissions();
+        console.log('TaskCondition - Created default permissions for task');
+      }
+      
+      // 3. 设置当前进度为条件设定页面
+      store.setProgress(taskId.value, 'condition');
+      
+      // 4. 加载任务表单数据
+      taskForm.taskName = task.taskName || '';
+      taskForm.taskDeadline = task.taskDeadline || null;
+      
+      // 5. 调试日志：检查权限数据和store状态
+      console.log('TaskCondition - Current Task Permissions:', task.permissions);
+      console.log('TaskCondition - Store Tasks:', store.tasks);
+    } else {
+      console.log('TaskCondition - Task not found in store, TaskInfo will handle redirection');
     }
-    
-    // 2. 确保权限对象存在
-    if (!task.permissions) {
-      task.permissions = getDefaultPermissions();
-      console.log('TaskCondition - Created default permissions for task');
-    }
-    
-    // 3. 设置当前任务ID
-    store.setCurrentTask(taskId.value);
-    
-    // 4. 设置当前进度为条件设定页面
-    store.setProgress('condition');
-    
-    // 5. 加载任务表单数据
-    taskForm.taskName = task.taskName || '';
-    taskForm.taskDeadline = task.taskDeadline || null;
-    
-    // 6. 调试日志：检查权限数据和store状态
-    console.log('TaskCondition - Current Task Permissions:', task.permissions);
-    console.log('TaskCondition - Store Current Task ID:', store.currentTaskId);
-    console.log('TaskCondition - Store Tasks:', store.tasks);
   }
   // 直接初始化数据，路由参数与store的一致性已由TaskInfo组件检查
   fetchSplitTables();
