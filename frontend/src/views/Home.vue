@@ -427,7 +427,7 @@ const generateTaskId = (file: File) => {
 
 .home-card {
   width: 100%;
-  max-width: 720px;
+  max-width: 800px;
   text-align: center;
   padding: 56px 32px;
   border-radius: 12px;
