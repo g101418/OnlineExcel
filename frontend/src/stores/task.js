@@ -97,11 +97,14 @@ export const useTaskStore = defineStore('task', {
 createTask(taskId, fileName) {
   // 检查是否已存在相同ID的任务
   const existingTaskIndex = this.tasks.findIndex(task => task.taskId === taskId)
+  const now = new Date().toLocaleString('zh-CN')
   if (existingTaskIndex !== -1) {
     // 如果存在，确保现有任务有默认权限
     if (!this.tasks[existingTaskIndex].permissions) {
       this.tasks[existingTaskIndex].permissions = getDefaultPermissions()
     }
+    // 更新任务时间
+    this.tasks[existingTaskIndex].updateTime = now
   } else {
     // 创建新任务
     const newTask = {
@@ -110,6 +113,7 @@ createTask(taskId, fileName) {
       fileName,
       taskName: '',
       taskDeadline: null,
+      updateTime: now,
       
       // 上传的数据
       uploadedHeaders: [],

@@ -60,6 +60,16 @@
           <el-table-column prop="dataSize" label="数据大小" width="120">
             <template #default="scope">{{ formatDataSize(scope.row.dataSize) }}</template>
           </el-table-column>
+          <el-table-column label="任务状态" width="160">
+            <template #default="scope">
+              <el-tag 
+                :type="getStatusType(scope.row.progress)" 
+                :effect="scope.row.progress === 'release' ? 'dark' : 'light'"
+              >
+                {{ getStatusText(scope.row.progress) }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="updateTime" label="更新时间" width="180" />
           <el-table-column label="操作" width="200">
             <template #default="scope">
@@ -113,6 +123,28 @@ const calculateDataSize = (headers, data) => {
   } catch (e) {
     return 0;
   }
+};
+
+// 获取任务状态文本
+const getStatusText = (progress) => {
+  const statusMap = {
+    generation: '正在拆分表格',
+    condition: '正在设置条件',
+    release: '已经发布任务',
+    completed: '已经完成'
+  };
+  return statusMap[progress] || '未知状态';
+};
+
+// 获取任务状态类型
+const getStatusType = (progress) => {
+  const typeMap = {
+    generation: 'primary',
+    condition: 'info',
+    release: 'success',
+    completed: 'success'
+  };
+  return typeMap[progress] || 'default';
 };
 
 // 格式化数据大小
@@ -222,7 +254,7 @@ const loadHistoricalData = () => {
       fileName: task.fileName,
       taskName: task.taskName,
       dataSize: dataSize,
-      updateTime: new Date().toLocaleString('zh-CN'),
+      updateTime: task.updateTime,
       progress: task.progress
     };
     
@@ -246,25 +278,6 @@ watch(
 );
 
 const openUploadDialog = async () => {
-  // 检查是否有历史任务存在
-  if (hasHistoricalData.value || (store.hasTask && store.hasUploadedData)) {
-    try {
-      await ElMessageBox.confirm('检测到有未完成的历史任务，继续上传将覆盖当前任务。是否继续？', '警告', {
-        confirmButtonText: '继续上传',
-        cancelButtonText: '取消',
-        type: 'warning',
-      });
-      
-      // 用户确认继续上传，清除历史任务
-      await clearHistory();
-    } catch (error) {
-      // 用户取消上传
-      if (error !== 'cancel') {
-        console.error('确认对话框出错:', error);
-      }
-      return;
-    }
-  }
   showUploadDialog.value = true;
 };
 

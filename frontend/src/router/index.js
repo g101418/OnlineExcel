@@ -54,6 +54,37 @@ router.beforeEach((to, from, next) => {
         // 找到对应的任务
         const task = taskStore.tasks.find(t => t.taskId === taskId);
         
+        if (!task) {
+            // 任务不存在，跳转到错误页面
+            next({ name: 'Error' });
+            return;
+        }
+        
+        // 严格控制TaskGeneration和TaskCondition页面的访问
+        if (to.name === 'TaskGeneration' && task.progress !== 'generation') {
+            // 当前任务进度不是generation，不允许访问TaskGeneration页面
+            if (task.progress === 'condition') {
+                next({ name: 'TaskCondition', query: { taskId } });
+            } else if (task.progress === 'release') {
+                next({ name: 'TaskRelease', query: { taskId } });
+            } else {
+                next({ name: 'Error' });
+            }
+            return;
+        }
+        
+        if (to.name === 'TaskCondition' && task.progress !== 'condition') {
+            // 当前任务进度不是condition，不允许访问TaskCondition页面
+            if (task.progress === 'generation') {
+                next({ name: 'TaskGeneration', query: { taskId } });
+            } else if (task.progress === 'release') {
+                next({ name: 'TaskRelease', query: { taskId } });
+            } else {
+                next({ name: 'Error' });
+            }
+            return;
+        }
+        
         // 检查进度状态和当前路由
         if (task && task.progress === 'release' && (to.name === 'TaskGeneration' || to.name === 'TaskCondition')) {
             // 如果进度为release，且当前要跳转到generation或condition，则重定向到release
