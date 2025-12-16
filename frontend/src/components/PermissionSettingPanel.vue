@@ -61,7 +61,8 @@
         </div>
 
         <div v-if="col.editable" class="validation-rules">
-          <el-select v-model="col.validation.type" @change="updateValidation(col)" style="width: 100%; margin-bottom: 10px;">
+          <el-select v-model="col.validation.type" @change="updateValidation(col)"
+            style="width: 100%; margin-bottom: 10px;">
             <el-option label="无验证" value="" />
             <el-option label="数字" value="number" />
             <el-option label="日期" value="date" />
@@ -71,16 +72,8 @@
           </el-select>
 
           <div v-if="col.validation.type === 'number'" class="number-validation">
-            <input
-              type="number"
-              v-model.number="col.validation.min"
-              placeholder="最小值"
-            />
-            <input
-              type="number"
-              v-model.number="col.validation.max"
-              placeholder="最大值"
-            />
+            <el-input-number v-model="col.validation.min" :precision="0" placeholder="最小值" />
+            <el-input-number v-model="col.validation.max" :precision="0" placeholder="最大值" />
             <label class="integer-option">
               <el-checkbox v-model="col.validation.isInteger" />
               整数
@@ -92,6 +85,7 @@
               <label style="line-height: 32px; white-space: nowrap; width: 70px;">日期格式：</label>
               <el-select v-model="col.validation.format" size="small" style="width: 150px;">
                 <el-option label="无限制" value="" />
+                <el-option label="yyyy年mm月dd日" value="yyyy年mm月dd日" />
                 <el-option label="yyyy-mm-dd" value="yyyy-mm-dd" />
                 <el-option label="yy-mm-dd" value="yy-mm-dd" />
                 <el-option label="yyyy/mm/dd" value="yyyy/mm/dd" />
@@ -102,36 +96,21 @@
             </div>
             <div class="date-range">
               <label style="line-height: 32px; white-space: nowrap; width: 90px; margin-right: 5px;">限定日期范围：</label>
-              <el-date-picker
-                v-model="col.validation.min"
-                type="date"
-                placeholder="开始日期"
-                size="small"
-                style="flex: 1; min-width: 120px;"
-              />
-              <el-date-picker
-                v-model="col.validation.max"
-                type="date"
-                placeholder="结束日期"
-                size="small"
-                style="flex: 1; min-width: 120px;"
-              />
+              <el-date-picker v-model="col.validation.min" type="date" placeholder="开始日期" size="small"
+                style="flex: 1; min-width: 120px;" />
+              <el-date-picker v-model="col.validation.max" type="date" placeholder="结束日期" size="small"
+                style="flex: 1; min-width: 120px;" />
             </div>
           </div>
 
           <div v-if="col.validation.type === 'text'" class="text-validation">
-            <input
-              type="number"
-              v-model.number="col.validation.maxLength"
-              placeholder="最大长度"
-            />
+            <label style="line-height: 32px; white-space: nowrap; width: 70px;">最大长度：</label>
+
+            <el-input-number v-model="col.validation.maxLength" :min="1" :precision="0" placeholder="最大长度" />
           </div>
 
           <div v-if="col.validation.type === 'options'" class="options-validation">
-            <el-input-tag
-              v-model="col.validation.options"
-              placeholder="请输入选项，回车确认（可输入多个选项）"
-            />
+            <el-input-tag v-model="col.validation.options" placeholder="请输入选项，回车确认（可输入多个选项）" />
           </div>
 
           <div v-if="col.validation.type === 'regex'" class="regex-validation">
@@ -147,11 +126,7 @@
             </div>
             <div class="regex-custom">
               <label>自定义正则表达式：</label>
-              <input
-                type="text"
-                v-model="col.validation.regex"
-                placeholder="输入正则表达式"
-              />
+              <el-input v-model="col.validation.regex" placeholder="输入正则表达式" />
             </div>
           </div>
         </div>
@@ -208,18 +183,18 @@ const regexPresets = ref({
 const initColumns = () => {
   // 确保taskId存在
   if (!taskId.value) return;
-  
+
   // 确保store中存在当前任务的权限对象
   if (currentTask.value && !currentTask.value.permissions) {
     store.savePermissions(taskId.value, getDefaultPermissions());
   }
-  
+
   // 无论是拆分表还是非拆分表，都使用完整的上传表头列表
   if (uploadedHeaders.value.length > 0) {
     localColumns.value = uploadedHeaders.value.map((h, index) => {
       // 检查是否是拆分字段列
       const isSplitColumn = split.value && header.value && h === header.value;
-      
+
       return {
         label: h,
         prop: h,
@@ -227,20 +202,20 @@ const initColumns = () => {
         editable: !(isSplitColumn || (!split.value && index === 0)),
         required: false,
         validation: {
-            type: "",
-            min: null,
-            max: null,
-            maxLength: null,
-            options: [],
-            isInteger: false,
-            regex: "",
-            regexName: "",
-            format: "" // 设置默认日期格式为无限制（空字符串）
-          },
+          type: "",
+          min: null,
+          max: null,
+          maxLength: null,
+          options: [],
+          isInteger: false,
+          regex: "",
+          regexName: "",
+          format: "" // 设置默认日期格式为无限制（空字符串）
+        },
       };
     });
   }
-  
+
   // 如果store中有权限设置，应用到columns
   if (currentTask.value?.permissions?.columns?.length > 0) {
     // 确保options是数组类型

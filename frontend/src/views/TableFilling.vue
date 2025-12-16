@@ -144,7 +144,12 @@ const permissions = {
         { label: '产品名称', editable: false, required: true },
         { label: '销售数量', editable: true, required: true, validation: { type: 'number', min: 1, max: 1000, isInteger: true } },
         { label: '销售金额', editable: true, validation: { type: 'number', min: 0, max: 100000 } },
-        { label: '销售日期', editable: true, validation: { type: 'date', min: '2025-12-01', max: '2025-12-31' } },
+        {
+            label: '销售日期', editable: true, validation: {
+                type: 'date', min: "2025-11-30T16:00:00.000Z",
+                max: "2025-12-30T16:00:00.000Z", format: "yyyy-mm-dd"
+            }
+        },
         { label: '客户类型', editable: true, required: true, validation: { options: ['企业', '个人'] } },
         { label: '区域', editable: true, validation: { regex: '^(华东|华南|华北|华中|东北|西北|西南)$', regexName: '大区名称' } },
         { label: '业务员手机号', editable: true, validation: { regex: '^1[3-9]\\d{9}$', regexName: '手机号' } },
@@ -170,23 +175,58 @@ function getValidationError(value: any, perm: any): string | null {
     if (required && v === '') return '该字段为必填项'
     if (v == null || v === '') return null // 非必填且为空，跳过后续校验
 
-    if (maxLength && v.length > maxLength) return `最多允许 ${maxLength} 个字符`
+    if (type === 'text' && maxLength && v.length > maxLength) return `最多允许 ${maxLength} 个字符`
 
-    if (type === 'number') {
+    else if (type === 'number') {
         const num = Number(v)
         if (isNaN(num)) return '必须为数字'
         if (isInteger && !Number.isInteger(num)) return '必须为整数'
         if (min != null && num < min) return `不能小于 ${min}`
         if (max != null && num > max) return `不能大于 ${max}`
     }
-    if (type === 'date') {
+    else if (type === 'date') {
+        const { format } = validation
+
+        // 如果指定了格式，先验证格式
+        if (format) {
+            let regex: RegExp
+            switch (format.toLowerCase()) {
+                case 'yyyy-mm-dd':
+                    regex = /^\d{4}-\d{2}-\d{2}$/
+                    break
+                case 'yy-mm-dd':
+                    regex = /^\d{2}-\d{2}-\d{2}$/
+                    break
+                case 'yyyy/mm/dd':
+                    regex = /^\d{4}\/\d{2}\/\d{2}$/
+                    break
+                case 'yy/mm/dd':
+                    regex = /^\d{2}\/\d{2}\/\d{2}$/
+                    break
+                case 'yyyy.mm.dd':
+                    regex = /^\d{4}\.\d{2}\.\d{2}$/
+                    break
+                case 'yy.mm.dd':
+                    regex = /^\d{2}\.\d{2}\.\d{2}$/
+                    break
+                case 'yyyy年mm月dd日':
+                    regex = /^\d{4}年\d{2}月\d{2}日$/
+                    break
+                default:
+                    return '不支持的日期格式'
+            }
+            if (!regex.test(v)) return `日期格式必须为 ${format}`
+        }
+
+        // 然后验证日期有效性和范围
         const d = new Date(v)
         if (isNaN(d.getTime())) return '日期格式不正确'
-        if (min && d < new Date(min)) return `不能早于 ${min}`
+        if (min && d < new Date(min)) { return `不能早于 ${min}`; }
         if (max && d > new Date(max)) return `不能晚于 ${max}`
     }
-    if (options && !options.includes(v)) return `只能填写：${options.join(' / ')}`
-    if (regex && !new RegExp(regex).test(v)) return '格式不正确'
+    else if (type === 'options' && options && !options.includes(v)) { return `只能填写：${options.join(' / ')}` }
+    else if (type === 'regex' && regex && !new RegExp(regex).test(v)) { return '格式不正确' }
+
 
     return null
 }
@@ -320,23 +360,28 @@ const getDeadlineText = () => '进行中'
 
 .task-info-section {
     margin-bottom: 24px;
+
     .task-title {
         margin-bottom: 16px;
         font-size: 20px;
         font-weight: 600;
         color: #333;
     }
+
     .meta {
         display: flex;
         flex-wrap: wrap;
         gap: 24px;
         margin-bottom: 16px;
+
         p {
             margin: 0;
             font-size: 14px;
+
             .copy-clickable {
                 cursor: pointer;
                 color: #409eff;
+
                 &:hover {
                     text-decoration: underline;
                 }
