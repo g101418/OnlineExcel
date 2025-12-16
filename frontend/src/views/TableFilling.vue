@@ -138,69 +138,7 @@ const permissions = {
         }
     ]
 }
-// ======================
-// 新增：通用函数 - 生成各列权限提示
-// ======================
-function generateColumnTooltips(permissions: any): string[] {
-    const tooltips: string[] = [];
-    permissions.columns.forEach((col: any) => {
-        let tip = `【${col.label}】`;
-        if (!col.editable) {
-            tip += '只读';
-        } else {
-            tip += '可编辑';
-        }
-        if (col.required) {
-            tip += '，必填';
-        }
-        const v = col.validation || {};
-        if (v.type === 'number') {
-            if (v.isInteger) {
-                tip += '，整数';
-            } else {
-                tip += '，数字';
-            }
-            if (v.min != null && v.max != null) {
-                tip += `，${v.min}–${v.max}`;
-            } else if (v.min != null) {
-                tip += `，≥ ${v.min}`;
-            } else if (v.max != null) {
-                tip += `，≤ ${v.max}`;
-            }
-        } else if (v.type === 'date') {
-            tip += '，日期';
-            if (v.format) {
-                tip += `（格式：${v.format}）`;
-            }
-            if (v.min && v.max) {
-                // 简化日期显示，去掉时间部分
-                const minDate = new Date(v.min).toLocaleDateString('zh-CN');
-                const maxDate = new Date(v.max).toLocaleDateString('zh-CN');
-                tip += `，${minDate} ~ ${maxDate}`;
-            } else if (v.dateMin && v.dateMax) { // 处理参考JSON中的dateMin/dateMax
-                const minDate = new Date(v.dateMin).toLocaleDateString('zh-CN');
-                const maxDate = new Date(v.dateMax).toLocaleDateString('zh-CN');
-                tip += `，${minDate} ~ ${maxDate}`;
-            }
-        } else if (v.type === 'regex') {
-            tip += '，格式';
-            if (v.regexName) {
-                tip += `：${v.regexName}`;
-            } else if (v.regex) {
-                tip += '需匹配正则';
-            }
-        } else if (v.options && v.options.length > 0) {
-            tip += `，${v.options.join(' / ')}`;
-        }
-        if (v.maxLength != null) {
-            tip += `，最多 ${v.maxLength} 字`;
-        }
-        tooltips.push(tip);
-    });
-    return tooltips;
-}
-// 生成提示（基于permissions）
-const columnTooltips = generateColumnTooltips(permissions);
+
 // ======================
 // 校验状态
 // ======================
@@ -261,7 +199,7 @@ const hotSettings = computed(() => ({
             delete TH.__tooltipInstance;
         }
     },
-    minRows: 5,
+    minRows: 0,
     rowHeights: 36,
     autoWrapRow: true,
     autoWrapCol: true,
