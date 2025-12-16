@@ -1,9 +1,30 @@
 <template>
   <div class="task-condition-root">
-    <TaskInfo title="设定条件" :taskId="taskId" :fileName="fileName" :showDivider="true"
-      @task-validity-change="handleTaskValidityChange" />
+    <TaskInfo title="设定条件" :showDivider="true" @task-validity-change="handleTaskValidityChange" />
     <!-- 只有当任务有效时，才显示内容 -->
     <div v-if="isTaskValid" class="info">
+      <!-- 任务名称输入框 -->
+      <div class="task-name-input">
+        <h3>任务信息</h3>
+        <el-form :model="taskForm" label-width="115px" style="margin-bottom: 20px;">
+          <el-row :gutter="20">
+            <el-col :span="14">
+              <el-form-item label="任务名称" prop="taskName"
+                :rules="[{ required: true, message: '请输入任务名称', trigger: ['blur', 'submit'] }, { max: 30, message: '任务名称最长30个字', trigger: ['blur', 'submit'] }]">
+                <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" maxlength="30" show-word-limit />
+              </el-form-item>
+            </el-col>
+            <el-col :span="10">
+              <el-form-item label="任务截止日期" prop="taskDeadline"
+                :rules="[{ required: true, message: '请选择任务截止日期', trigger: ['blur', 'change'] }]">
+                <el-date-picker v-model="taskForm.taskDeadline" type="datetime" placeholder="请选择日期时间"
+                  :disabledDate="disabledDate" style="width: 80%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </el-form>
+      </div>
+
       <!-- 显示拆分后的表格列表 -->
       <div v-if="splitTables.length > 0" class="split-tables-list">
         <div class="table-header">
@@ -45,7 +66,8 @@
   <!-- 临时权限展示区域 -->
   <div class="permission-display">
     <h4>当前权限设置</h4>
-    <pre>{{ JSON.stringify(store.permissions, null, 2) }}</pre>
+    <!-- 使用专门的计算属性来展示权限数据 -->
+    <pre>{{ JSON.stringify(displayedPermissions, null, 2) }}</pre>
   </div>
 
 
@@ -60,26 +82,79 @@ import TaskInfo from "../components/TaskInfo.vue";
 import SparkMD5 from "spark-md5";
 import { ElMessage } from "element-plus";
 // 导入API
-import { saveTaskSettings } from "../api/task";
+import { saveTaskSettings, getTaskData } from "../api/task";
+// 导入默认权限函数
+import { getDefaultPermissions } from "../hooks/tablePermission";
 
 const router = useRouter();
 const route = useRoute();
 const store = useTaskStore();
 
-// 从store获取数据
-const taskId = computed(() => store.taskId);
-const fileName = computed(() => store.fileName);
-const split = computed(() => store.split);
-const header = computed(() => store.header);
-const splitData = computed(() => store.splitData);
+// 从路由query获取taskId
+const taskId = computed(() => route.query.taskId as string);
+// 从store获取当前任务数据（与PermissionSettingPanel保持一致的获取方式）
+const currentTask = computed(() => {
+  if (!taskId.value) return null;
+  return store.tasks.find(task => task.taskId === taskId.value);
+});
+const fileName = computed(() => currentTask.value?.fileName || '');
+const split = computed(() => currentTask.value?.split || false);
+const header = computed(() => currentTask.value?.header || '');
+const splitData = computed(() => currentTask.value?.splitData || []);
+
+// 专门用于权限展示的计算属性，添加详细日志
+const displayedPermissions = computed(() => {
+  // 直接通过taskId查找任务，不依赖store.currentTask getter
+  const task = store.tasks.find(t => t.taskId === taskId.value);
+
+  // 如果找到任务且有权限，使用该权限
+  if (task) {
+    // 确保任务有完整的权限结构
+    if (!task.permissions) {
+      task.permissions = getDefaultPermissions();
+    }
+
+    // 确保权限结构完整
+    if (!task.permissions.row) {
+      task.permissions.row = { addable: false, deletable: false, sortable: false };
+    }
+    if (!task.permissions.columns) {
+      task.permissions.columns = [];
+    }
+
+    return task.permissions;
+  }
+
+  // 如果没有找到任务，返回默认权限
+  return getDefaultPermissions();
+});
 
 // 拆分表格相关数据
 const splitTables = ref([]);
 const dialogVisible = ref(false);
 const currentTable = ref({});
 
-// 权限设置相关数据
-// 权限管理已迁移到 PermissionSettingPanel.vue 组件中
+// 任务表单数据
+const taskForm = reactive({
+  taskName: '',
+  taskDeadline: null
+});
+
+// 日期禁用规则：从第二天开始，最长3周
+const disabledDate = (time: Date) => {
+  // 计算今天和3周后的日期
+  const today = new Date();
+  const nextDay = new Date(today);
+  nextDay.setDate(today.getDate() + 1); // 从第二天开始
+  nextDay.setHours(0, 0, 0, 0);
+
+  const maxDate = new Date(today);
+  maxDate.setDate(today.getDate() + 21); // 最长3周（21天）
+  maxDate.setHours(23, 59, 59, 999);
+
+  // 禁用今天及之前的日期，以及3周之后的日期
+  return time.getTime() < nextDay.getTime() || time.getTime() > maxDate.getTime();
+};
 
 // 任务有效性状态（由TaskInfo组件传递）
 const isTaskValid = ref(true);
@@ -89,15 +164,34 @@ const handleTaskValidityChange = (valid: boolean) => {
   isTaskValid.value = valid;
 };
 
+// 任务信息验证
+const validateTaskInfo = () => {
+  if (!taskForm.taskName.trim()) {
+    ElMessage.warning('请输入任务名称');
+    return false;
+  }
+  if (!taskForm.taskDeadline) {
+    ElMessage.warning('请选择任务截止日期');
+    return false;
+  }
+  return true;
+};
+
 
 
 // 获取拆分表格数据
 const fetchSplitTables = async () => {
   try {
+    // 确保currentTask存在
+    if (!currentTask.value) {
+      splitTables.value = [];
+      return;
+    }
+
     // 不拆分的情况：直接使用完整数据作为一个表格
     if (!split.value) {
-      const headers = store.uploadedHeaders;
-      const data = store.uploadedData;
+      const headers = currentTask.value.uploadedHeaders;
+      const data = currentTask.value.uploadedData;
 
       if (headers.length > 0 && data.length > 0) {
         // 将二维数组转换为对象数组
@@ -126,9 +220,12 @@ const fetchSplitTables = async () => {
     }
 
     // 拆分的情况：使用拆分后的数据
-    if (!header.value) return;
+    if (!header.value) {
+      splitTables.value = [];
+      return;
+    }
 
-    // 从 store 获取真实的拆分数据
+    // 从currentTask获取真实的拆分数据
     if (splitData.value && splitData.value.length > 0) {
       splitTables.value = splitData.value.map(item => {
         // 将二维数组转换为对象数组
@@ -168,44 +265,76 @@ const viewTable = (table) => {
 
 
 
-const goToTaskGeneration = () => {
-  // 重置进度为任务生成页面
-  store.progress = 'generation';
+const goToTaskGeneration = async () => {
+  try {
+    // 如果当前是从release环节返回，获取最新任务数据并更新Pinia store
+    if (currentTask.value?.progress === 'release') {
+      const taskData = await getTaskData(taskId.value);
+      store.setUploadedData(taskId.value, taskData.uploadedHeaders, taskData.uploadedData);
+      store.setSplitInfo(taskId.value, taskData.splitEnabled, taskData.selectedHeader);
+      // 更新其他必要的任务信息
+      if (taskData.taskName) store.setTaskName(taskId.value, taskData.taskName);
+      if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
+    }
 
-  router.push({
-    path: "/task-generation",
-    query: { taskId: taskId.value }
-  });
+    // 重置进度为任务生成页面
+    store.setProgress(taskId.value, 'generation');
+
+    router.push({
+      path: "/task-generation",
+      query: { taskId: taskId.value }
+    });
+  } catch (error) {
+    console.error("返回任务生成页面失败:", error);
+    ElMessage.error("返回任务生成页面失败，请稍后重试");
+  }
 };
 
 const goHome = () => router.push({ path: "/" });
 
 const saveSettings = async () => {
+  // 验证任务信息
+  if (!validateTaskInfo()) {
+    return;
+  }
+
   try {
-    // 生成表格链接
-    const generateTableLink = (table, index) => {
+    // 生成表格随机编码
+    const generateTableCode = (table, index) => {
       const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
       const tableIdentifier = `${table.name || `table_${index}`}:${table.rowCount}:${index}`;
       const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
-      const linkHash = SparkMD5.hash(metaStr).slice(0, 28);
-      return `${window.location.origin}/process-table?link=${linkHash}`;
+      return SparkMD5.hash(metaStr).slice(0, 28);
     };
 
-    // 为所有表格生成链接并保存到store
+    // 为所有表格生成随机编码并保存到store
+    const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
+    // 保存到store时保留完整信息，方便前端使用
     const tableLinks = splitTables.value.map((table, index) => ({
       name: table.name,
-      link: generateTableLink(table, index)
+      code: tableCodes[index],
+      link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
     }));
-    store.setTableLinks(tableLinks);
+    store.setTableLinks(taskId.value, tableLinks);
+
+    // 将任务名称和截止日期保存到store
+    store.setTaskName(taskId.value, taskForm.taskName);
+    store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
 
     // 准备发送到服务端的数据
     const taskData = {
       taskId: taskId.value,
       fileName: fileName.value,
+      taskName: taskForm.taskName, // 添加任务名称
+      taskDeadline: taskForm.taskDeadline, // 添加任务截止日期
+      tableLinks: tableCodes, // 只发送随机编码数组
+      uploadedHeaders: currentTask.value?.uploadedHeaders || [],
+      uploadedData: currentTask.value?.uploadedData || [],
       split: split.value,
       header: header.value,
-      tableLinks: tableLinks,
-      splitTables: splitTables.value
+      selectedHeader: currentTask.value?.selectedHeader || '',
+      splitData: currentTask.value?.splitData || [],
+      permissions: currentTask.value?.permissions || { row: {}, columns: [] }
     };
 
     // 调用API保存设置到服务端
@@ -225,8 +354,27 @@ const saveSettings = async () => {
 };
 
 onMounted(() => {
-  // 设置当前进度为条件设定页面
-  store.progress = 'condition';
+  // 根据路由query中的taskId设置当前任务
+  if (taskId.value) {
+    // 1. 查找当前任务
+    const task = store.tasks.find(t => t.taskId === taskId.value);
+    if (task) {
+      // 2. 确保权限对象存在
+      if (!task.permissions) {
+        task.permissions = getDefaultPermissions();
+      }
+
+      // 3. 设置当前进度为条件设定页面
+      store.setProgress(taskId.value, 'condition');
+
+      // 4. 加载任务表单数据
+      taskForm.taskName = task.taskName || '';
+      taskForm.taskDeadline = task.taskDeadline || null;
+
+    } else {
+
+    }
+  }
   // 直接初始化数据，路由参数与store的一致性已由TaskInfo组件检查
   fetchSplitTables();
 });
@@ -241,6 +389,26 @@ watch(
   },
   { deep: true }
 );
+
+// 监听任务名称变化，实时保存到store
+watch(
+  () => taskForm.taskName,
+  (newName) => {
+    if (taskId.value) {
+      store.setTaskName(taskId.value, newName);
+    }
+  }
+);
+
+// 监听任务截止日期变化，实时保存到store
+watch(
+  () => taskForm.taskDeadline,
+  (newDeadline) => {
+    if (taskId.value) {
+      store.setTaskDeadline(taskId.value, newDeadline);
+    }
+  }
+);
 </script>
 
 <style scoped lang="less">
@@ -250,6 +418,21 @@ watch(
 
 .info {
   margin-top: 10px;
+}
+
+.task-name-input {
+  background-color: #f5f7fa;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  border: 1px solid #e4e7ed;
+}
+
+.task-name-input h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: #303133;
 }
 
 .info p {

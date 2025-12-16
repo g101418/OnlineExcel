@@ -50,7 +50,7 @@
       <div v-for="(col, index) in localColumns" :key="index" class="column-setting">
         <div class="column-basic-permissions">
           <label>
-            {{ col.label }} 
+            <strong>{{ col.label }} </strong>
             <el-checkbox v-model="col.editable" :disabled="split && header && col.label === header" />
             可编辑
           </label>
@@ -89,9 +89,9 @@
 
           <div v-if="col.validation.type === 'date'" class="date-validation">
             <div class="date-format">
-              <label style="margin-left: 0px; line-height: 32px; margin-right: 5px;">日期格式：</label>
+              <label style="line-height: 32px; white-space: nowrap; width: 70px;">日期格式：</label>
               <el-select v-model="col.validation.format" size="small" style="width: 150px;">
-                <el-option label="无限制" :value="null" />
+                <el-option label="无限制" value="" />
                 <el-option label="yyyy-mm-dd" value="yyyy-mm-dd" />
                 <el-option label="yy-mm-dd" value="yy-mm-dd" />
                 <el-option label="yyyy/mm/dd" value="yyyy/mm/dd" />
@@ -101,19 +101,20 @@
               </el-select>
             </div>
             <div class="date-range">
-              <label style="line-height: 32px; margin-right: 5px;">限定日期范围：</label>
+              <label style="line-height: 32px; white-space: nowrap; width: 90px; margin-right: 5px;">限定日期范围：</label>
               <el-date-picker
                 v-model="col.validation.min"
                 type="date"
                 placeholder="开始日期"
                 size="small"
-                style="margin-right: 10px;"
+                style="flex: 1; min-width: 120px;"
               />
               <el-date-picker
                 v-model="col.validation.max"
                 type="date"
                 placeholder="结束日期"
                 size="small"
+                style="flex: 1; min-width: 120px;"
               />
             </div>
           </div>
@@ -127,10 +128,9 @@
           </div>
 
           <div v-if="col.validation.type === 'options'" class="options-validation">
-            <input
-              type="text"
+            <el-input-tag
               v-model="col.validation.options"
-              placeholder="选项(逗号分隔)"
+              placeholder="请输入选项，回车确认（可输入多个选项）"
             />
           </div>
 
@@ -138,7 +138,7 @@
             <div class="regex-presets">
               <label>常用正则：</label>
               <el-select v-model="col.validation.regexName" @change="selectRegexPreset(col)" style="width: 100%;">
-                <el-option label="选择预设" value="" />
+                <el-option label="自定义" value="custom" />
                 <el-option label="手机号" value="phone" />
                 <el-option label="身份证号" value="idcard" />
                 <el-option label="邮箱" value="email" />
@@ -165,6 +165,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useTaskStore } from "../stores/task";
+import { getDefaultPermissions } from "../hooks/tablePermission";
 
 // 定义 props
 const props = defineProps<{
@@ -174,14 +175,26 @@ const props = defineProps<{
 // 导入 store
 const store = useTaskStore();
 
+// 导入路由
+import { useRoute } from 'vue-router';
+const route = useRoute();
+
+// 从路由获取taskId
+const taskId = computed(() => route.query.taskId as string);
+
 // 从 store 获取数据
-const uploadedHeaders = computed(() => store.uploadedHeaders);
-const split = computed(() => store.split);
-const header = computed(() => store.header);
-const rowPermissions = computed(() => store.permissions.row);
+const currentTask = computed(() => {
+  if (!taskId.value) return null;
+  return store.getTask(taskId.value);
+});
+const uploadedHeaders = computed(() => currentTask.value?.uploadedHeaders || []);
+const split = computed(() => currentTask.value?.split || false);
+const header = computed(() => currentTask.value?.header || '');
+const storePermissions = computed(() => currentTask.value?.permissions);
 
 // 权限设置相关数据
 const localColumns = ref([]);
+const rowPermissions = ref({ addable: false, deletable: false, sortable: false });
 
 // 常用正则表达式预设
 const regexPresets = ref({
@@ -193,6 +206,14 @@ const regexPresets = ref({
 
 // 初始化列数据
 const initColumns = () => {
+  // 确保taskId存在
+  if (!taskId.value) return;
+  
+  // 确保store中存在当前任务的权限对象
+  if (currentTask.value && !currentTask.value.permissions) {
+    store.savePermissions(taskId.value, getDefaultPermissions());
+  }
+  
   // 无论是拆分表还是非拆分表，都使用完整的上传表头列表
   if (uploadedHeaders.value.length > 0) {
     localColumns.value = uploadedHeaders.value.map((h, index) => {
@@ -206,23 +227,40 @@ const initColumns = () => {
         editable: !(isSplitColumn || (!split.value && index === 0)),
         required: false,
         validation: {
-          type: "",
-          min: null,
-          max: null,
-          maxLength: null,
-          options: "",
-          isInteger: false,
-          regex: "",
-          regexName: "",
-          format: null // 设置默认日期格式为无限制
-        },
+            type: "",
+            min: null,
+            max: null,
+            maxLength: null,
+            options: [],
+            isInteger: false,
+            regex: "",
+            regexName: "",
+            format: "" // 设置默认日期格式为无限制（空字符串）
+          },
       };
     });
   }
   
   // 如果store中有权限设置，应用到columns
-  if (store.permissions.columns.length > 0) {
-    localColumns.value = store.permissions.columns;
+  if (currentTask.value?.permissions?.columns?.length > 0) {
+    // 确保options是数组类型
+    localColumns.value = currentTask.value.permissions.columns.map(column => {
+      if (column.validation && column.validation.type === 'options') {
+        // 如果options是字符串类型，转换为数组
+        if (typeof column.validation.options === 'string') {
+          column.validation.options = column.validation.options
+            ? column.validation.options.split(',').map(opt => opt.trim())
+            : [];
+        } else if (!Array.isArray(column.validation.options)) {
+          // 如果不是字符串也不是数组，设为空数组
+          column.validation.options = [];
+        }
+      }
+      return column;
+    });
+  } else if (localColumns.value.length > 0 && currentTask.value) {
+    // 如果没有已有的权限设置，将默认的列权限保存到store
+    store.setColumnPermissions(taskId.value, localColumns.value);
   }
 };
 
@@ -234,11 +272,11 @@ const updateValidation = (column: any) => {
     min: null,
     max: null,
     maxLength: null,
-    options: "",
+    options: [],
     isInteger: false,
     regex: "",
     regexName: "",
-    format: null, // 重置日期格式为默认值（无限制）
+    format: "", // 重置日期格式为默认值（无限制）
   };
 };
 
@@ -261,13 +299,30 @@ watch(() => props.columns, (newColumns) => {
 // 监听权限设置变化，自动保存到 store
 watch(() => localColumns.value, (newColumns) => {
   if (newColumns && newColumns.length > 0) {
-    store.setColumnPermissions(newColumns);
+    store.setColumnPermissions(taskId.value, newColumns);
   }
 }, { deep: true });
 
+// 监听currentTask.permissions变化，初始化本地rowPermissions
+watch(() => currentTask.value?.permissions, (newPermissions) => {
+  if (newPermissions?.row) {
+    // 只有当store中的rowPermissions与本地不同时才更新，避免递归
+    const isDifferent = JSON.stringify(newPermissions.row) !== JSON.stringify(rowPermissions.value);
+    if (isDifferent) {
+      rowPermissions.value = { ...newPermissions.row };
+    }
+  }
+}, { deep: true, immediate: true });
+
 // 监听行权限变化，自动保存到 store
 watch(() => rowPermissions.value, (newRowPermissions) => {
-  store.permissions.row = newRowPermissions;
+  if (newRowPermissions) {
+    // 检查是否与store中的值相同，避免递归
+    const storeRowPermissions = currentTask.value?.permissions?.row || {};
+    if (JSON.stringify(newRowPermissions) !== JSON.stringify(storeRowPermissions)) {
+      store.setRowPermissions(taskId.value, newRowPermissions);
+    }
+  }
 }, { deep: true });
 
 // 组件挂载时初始化
@@ -367,18 +422,31 @@ onMounted(() => {
 
 .date-validation {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
   margin-bottom: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.date-validation .date-format,
+.date-validation .date-format {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  vertical-align: center;
+  width: 250px;
+  flex-shrink: 0;
+}
+
 .date-validation .date-range {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
   vertical-align: center;
+  flex: 1;
+  min-width: 250px;
+  overflow: hidden;
 }
 
 .number-validation input,
