@@ -2,16 +2,27 @@
     <div class="table-filling-root">
         <!-- 任务信息 -->
         <div class="task-info-section">
-            <div class="task-header">
-                <h2>{{ taskInfo.taskName || '表格填报任务' }}</h2>
-                <div class="task-meta">
-                    <span>任务ID：{{ taskInfo.taskId }}</span>
-                    <span>截止日期：{{ formatDate(taskInfo.taskDeadline) }}</span>
+            <component :is="headingLevel" class="task-title">{{ taskInfo.taskName || '表格填报任务' }}</component>
+            <div class="meta">
+                <p v-if="taskInfo.taskName"><strong>任务名称：</strong>{{ taskInfo.taskName }}</p>
+                <p>
+                    <strong>任务编号：</strong>
+                    <el-tooltip content="点击复制任务编号" placement="top">
+                        <span class="copy-clickable" @click="copyTaskId(taskInfo.taskId)">{{ taskInfo.taskId }}</span>
+                    </el-tooltip>
+                </p>
+                <p>
+                    <strong>截止日期：</strong>
+                    {{ formatDate(taskInfo.taskDeadline) }}
+                </p>
+                <p>
+                    <strong>状态：</strong>
                     <el-tag :type="getDeadlineStatus()" size="small">
                         {{ getDeadlineText() }}
                     </el-tag>
-                </div>
+                </p>
             </div>
+            <el-divider v-if="showDivider" />
         </div>
         <!-- 表格区域 -->
         <div class="table-section">
@@ -37,7 +48,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick } from 'vue'
 // ElementPlus
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElTooltip, ElDivider } from 'element-plus'
 // Handsontable
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
@@ -59,6 +70,43 @@ const taskInfo = reactive({
     taskName: '销售数据填报任务',
     taskDeadline: '2025-12-31T23:59:59'
 })
+
+// 任务信息配置
+const headingLevel = ref<'h1' | 'h2'>('h2')
+const showDivider = ref(true)
+
+// 复制任务编号功能
+const copyTaskId = async (textToCopy: string) => {
+    if (!textToCopy) return
+
+    try {
+        await navigator.clipboard.writeText(textToCopy)
+        ElMessage.success({
+            message: "任务编号已成功复制到剪贴板！",
+            duration: 1000,
+        })
+    } catch (err) {
+        const textarea = document.createElement("textarea")
+        textarea.value = textToCopy
+        textarea.style.position = "fixed"
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        try {
+            const success = document.execCommand("copy")
+            if (success) {
+                ElMessage.success({
+                    message: "任务编号已成功复制到剪贴板！",
+                    duration: 1000,
+                })
+            } else {
+                throw new Error("execCommand failed")
+            }
+        } finally {
+            document.body.removeChild(textarea)
+        }
+    }
+}
 
 // 表头
 const originalHeaders = ref<string[]>([
@@ -267,7 +315,34 @@ const getDeadlineText = () => '进行中'
 }
 
 .table-filling-root {
-    padding: 20px;
+    padding: 10px;
+}
+
+.task-info-section {
+    margin-bottom: 24px;
+    .task-title {
+        margin-bottom: 16px;
+        font-size: 20px;
+        font-weight: 600;
+        color: #333;
+    }
+    .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        margin-bottom: 16px;
+        p {
+            margin: 0;
+            font-size: 14px;
+            .copy-clickable {
+                cursor: pointer;
+                color: #409eff;
+                &:hover {
+                    text-decoration: underline;
+                }
+            }
+        }
+    }
 }
 
 .table-section {
