@@ -15,28 +15,16 @@
         </div>
         <!-- 表格区域 -->
         <div class="table-section">
-
             <!-- 表格 -->
             <div class="table-wrapper">
                 <HotTable ref="hotTableRef" :key="originalHeaders.length" :settings="hotSettings" />
             </div>
             <!-- 校验汇总 -->
             <div v-if="validationErrorCount > 0" class="mt10">
-                <el-alert 
-                    :title="`当前有 ${validationErrorCount} 处填写错误`" 
-                    type="error"
-                    show-icon 
-                    :closable="false" 
-                    :fit-content="true"
-                    center
-                    :title-size="16"
-                />
+                <el-alert :title="`当前有 ${validationErrorCount} 处填写错误`" type="error" show-icon :closable="false"
+                    :fit-content="true" center :title-size="16" />
             </div>
-            <!-- 调试按钮 -->
-            <div class="mt10">
-                <el-button type="info" size="small" @click="debugValidate">调试验证</el-button>
-                <el-button type="warning" size="small" @click="clearAllErrors">清除错误</el-button>
-            </div>
+
         </div>
         <!-- 操作按钮 -->
         <div class="action-buttons">
@@ -217,7 +205,7 @@ const columnTooltips = generateColumnTooltips(permissions);
 // ======================
 // 校验状态
 // ======================
-const errors = ref<{[key: string]: string}>({ })
+const errors = ref<{ [key: string]: string }>({})
 const validationErrorCount = computed(() => Object.keys(errors.value).length)
 // ======================
 // 核心校验逻辑
@@ -258,291 +246,175 @@ function getValidationError(value: any, perm: any): string | null {
 // Handsontable 配置
 // ======================
 const hotSettings = computed(() => ({
-  licenseKey: 'non-commercial-and-evaluation',
-  language: zhCN.languageCode,
-  data: tableData.value,
-  width: '100%',
-  height: '500px', // 之前修复的高度设置
-  stretchH: 'all', // 列宽拉伸填满表格
-  rowHeaders: true,
-  colHeaders: originalHeaders.value, // 改回原样，只显示标签
-  forceValidation: true, // 强制验证所有单元格
-  afterGetColHeader: function(col: number, TH: HTMLElement) {
-    if (col < 0 || !TH) return; // 跳过行头或其他无效列
-    // 删除所有tooltip相关代码
-    TH.removeAttribute('title');
-    if (TH.__tooltipInstance) {
-      delete TH.__tooltipInstance;
-    }
-  },
-  minRows: 5,
-  rowHeights: 36,
-  autoWrapRow: true,
-  autoWrapCol: true,
-  className: 'htCenter',
-  columns: originalHeaders.value.map((_, colIndex) => {
-    const perm = permissions.columns[colIndex]
-    return {
-      data: colIndex,
-      readOnly: !perm.editable,
-      validator: (value: any, callback: Function, validationParams: any, cellProperties: any) => {
-        try {
-          // 获取当前单元格的行列信息
-          let cellRow: number | undefined;
-          let cellCol: number | undefined;
-          
-          // 从cellProperties中获取行列信息
-          if (cellProperties && cellProperties.row !== undefined && cellProperties.col !== undefined) {
-            cellRow = cellProperties.row;
-            cellCol = cellProperties.col;
-          }
-          // 如果cellProperties中没有行列信息，尝试从validationParams中获取
-          else if (validationParams && validationParams.row !== undefined && validationParams.col !== undefined) {
-            cellRow = validationParams.row;
-            cellCol = validationParams.col;
-          }
-          // 作为最后手段，尝试获取当前选中的单元格
-          else if (hotTableRef.value && hotTableRef.value.hotInstance) {
-            const hot = hotTableRef.value.hotInstance;
-            const selection = hot.getSelectedRange();
-            if (selection && selection.start) {
-              cellRow = selection.start.row;
-              cellCol = selection.start.col;
-            }
-          }
-          
-          // 验证行列信息是否有效
-          const isValidCellPosition = cellRow !== undefined && cellRow !== null && !isNaN(cellRow) && 
-                                      cellCol !== undefined && cellCol !== null && !isNaN(cellCol);
-          
-          console.log(`validator调用: 行${cellRow}, 列${cellCol}, 值${value}`)
-          
-          // 执行验证逻辑
-          const error = getValidationError(value, perm);
-          
-          // 更新错误对象
-          if (error) {
-            let key: string;
-            if (isValidCellPosition) {
-              // 使用行列索引作为键，确保不同单元格的错误使用不同的键
-              key = `${cellRow},${cellCol}`;
-            } else {
-              // 如果无法获取有效行列信息，使用一个唯一键记录错误
-              key = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            }
-            // 确保错误对象的更新能触发响应式更新
-            errors.value = {
-              ...errors.value,
-              [key]: error
-            };
-            console.log(`添加错误后errors:`, errors.value);
-          } else {
-            // 如果验证通过，移除相关错误
-            if (isValidCellPosition) {
-              const key = `${cellRow},${cellCol}`;
-              // 创建新对象，确保Vue能检测到变化
-              const newErrors = { ...errors.value };
-              delete newErrors[key];
-              errors.value = newErrors;
-            }
-            console.log(`删除错误后errors:`, errors.value);
-          }
-          
-          // 调用回调函数，告知Handsontable验证结果
-          callback(!error);
-          console.log(`当前错误数量:`, Object.keys(errors.value).length);
-        } catch (e) {
-          console.error('验证器执行错误:', e);
-          // 发生错误时默认验证通过，避免表格卡死
-          callback(true);
+    licenseKey: 'non-commercial-and-evaluation',
+    language: zhCN.languageCode,
+    data: tableData.value,
+    width: '100%',
+    height: '500px', // 之前修复的高度设置
+    stretchH: 'all', // 列宽拉伸填满表格
+    rowHeaders: true,
+    colHeaders: originalHeaders.value, // 改回原样，只显示标签
+    afterGetColHeader: function (col: number, TH: HTMLElement) {
+        if (col < 0 || !TH) return; // 跳过行头或其他无效列
+        // 删除所有tooltip相关代码
+        TH.removeAttribute('title');
+        if (TH.__tooltipInstance) {
+            delete TH.__tooltipInstance;
         }
-      }
-    }
-  }),
-  comments: true,
-  copyPaste: true,
-  manualRowMove: permissions.row.sortable, // 启用行拖拽功能
-  contextMenu: {
-    items: {
-      'row_above': {
-        name: '在上方插入行',
-        hidden: !permissions.row.addable // 根据权限控制是否显示插入行选项
-      },
-      'row_below': {
-        name: '在下方插入行',
-        hidden: !permissions.row.addable // 根据权限控制是否显示插入行选项
-      },
-      'hsep1': '---------',
-      'remove_row': {
-        name: '删除行',
-        hidden: !permissions.row.deletable // 根据权限控制是否显示删除行选项
-      },
-      'hsep2': '---------',
-      'undo': {
-        name: '撤销'
-      },
-      'redo': {
-        name: '重做'
-      }
-    }
-  },
-  // 监听行删除事件，更新错误计数
-  afterRemoveRow: function() {
-    // 重新验证所有单元格
-    const hot = this;
-    
-    // 清空所有错误
-    Object.keys(errors.value).forEach(key => {
-      delete errors.value[key];
-    });
-    
-    for (let row = 0; row < hot.countRows(); row++) {
-      for (let col = 0; col < hot.countCols(); col++) {
-        // 确保列索引在权限配置范围内
-        if (col >= permissions.columns.length) {
-          continue;
+    },
+    minRows: 5,
+    rowHeights: 36,
+    autoWrapRow: true,
+    autoWrapCol: true,
+    className: 'htCenter',
+    columns: originalHeaders.value.map((_, colIndex) => {
+        const perm = permissions.columns[colIndex]
+        return {
+            data: colIndex,
+            readOnly: !perm.editable,
+            validator: function (value: any, callback: Function) {
+                const error = getValidationError(value, perm);
+                callback(error === null);
+            }
         }
-        const value = hot.getDataAtCell(row, col);
+    }),
+    comments: true,
+    copyPaste: true,
+    manualRowMove: permissions.row.sortable, // 启用行拖拽功能
+    contextMenu: {
+        items: {
+            'row_above': {
+                name: '在上方插入行',
+                hidden: !permissions.row.addable // 根据权限控制是否显示插入行选项
+            },
+            'row_below': {
+                name: '在下方插入行',
+                hidden: !permissions.row.addable // 根据权限控制是否显示插入行选项
+            },
+            'hsep1': '---------',
+            'remove_row': {
+                name: '删除行',
+                hidden: !permissions.row.deletable // 根据权限控制是否显示删除行选项
+            },
+            'hsep2': '---------',
+            'undo': {
+                name: '撤销'
+            },
+            'redo': {
+                name: '重做'
+            }
+        }
+    },
+    afterInit: function () {
+        this.validateCells();
+    },
+    afterValidate: function (isValid: boolean, value: any, row: number, prop: number | string, source: string) {
+        const col = typeof prop === 'string' ? this.propToCol(prop) : prop;
+        const key = `${row},${col}`;
         const perm = permissions.columns[col];
-        const error = getValidationError(value, perm);
-        
-        if (error) {
-          errors.value[`${row},${col}`] = error;
+        if (!isValid) {
+            const error = getValidationError(value, perm);
+            if (error) {
+                errors.value = { ...errors.value, [key]: error };
+            }
+        } else {
+            const newErrors = { ...errors.value };
+            delete newErrors[key];
+            errors.value = newErrors;
         }
-      }
+    },
+    afterRemoveRow: function () {
+        errors.value = {};
+        this.validateCells();
     }
-  }
 }))
 // ======================
 // 业务辅助
 // ======================
 const canSubmit = computed(() => validationErrorCount.value === 0)
-
-
-
-// 调试函数
-function debugValidate() {
-  console.log('当前errors对象：', errors.value)
-  console.log('Object.keys(errors):', Object.keys(errors.value))
-  console.log('errors的长度：', Object.keys(errors.value).length)
-  console.log('validationErrorCount.value:', validationErrorCount.value)
-  
-  // 手动添加几个错误测试
-  errors.value['0,0'] = '测试错误1'
-  errors.value['1,1'] = '测试错误2'
-  errors.value['2,2'] = '测试错误3'
-  
-  console.log('手动添加错误后：')
-  console.log('当前errors对象：', errors.value)
-  console.log('Object.keys(errors):', Object.keys(errors.value))
-  console.log('errors的长度：', Object.keys(errors.value).length)
-  console.log('validationErrorCount.value:', validationErrorCount.value)
-}
-
-function clearAllErrors() {
-  Object.keys(errors.value).forEach(key => {
-    delete errors.value[key]
-  })
-  console.log('所有错误已清除')
-  console.log('当前errors对象：', errors.value)
-  console.log('errors的长度：', Object.keys(errors.value).length)
-  console.log('validationErrorCount.value:', validationErrorCount.value)
-}
-
 const formatDate = (d: string) => new Date(d).toLocaleString()
 const getDeadlineStatus = () => 'success'
 const getDeadlineText = () => '进行中'
 const getRowOperationText = () => '允许新增行，允许拖拽排序'
-
 // 生成列权限的用户友好提示
 const generateColumnPermissionText = (columnPerm: any) => {
-  if (!columnPerm) return '';
-  
-  const { editable, required, label, validation = {} } = columnPerm;
-  const { type, min, max, maxLength, options, isInteger, regex, regexName, dateMin, dateMax, format } = validation;
-  
-  const permissionTexts: string[] = [];
-  
-  // 编辑权限
-  permissionTexts.push(editable ? '可编辑' : '只读');
-  
-  // 必填状态
-  if (required) {
-    permissionTexts.push('必填');
-  }
-  
-  // 验证规则
-  const validationTexts: string[] = [];
-  
-  // 数据类型
-  if (type) {
-    switch (type) {
-      case 'number':
-        validationTexts.push('数值类型');
-        if (min !== null) {
-          validationTexts.push(`最小值: ${min}`);
-        }
-        if (max !== null) {
-          validationTexts.push(`最大值: ${max}`);
-        }
-        if (isInteger) {
-          validationTexts.push('必须为整数');
-        }
-        break;
-      case 'date':
-        validationTexts.push('日期类型');
-        if (format) {
-          validationTexts.push(`格式: ${format}`);
-        }
-        // 优先使用dateMin/dateMax（用户提供的JSON格式），如果不存在则使用min/max
-        let effectiveMinDate = dateMin || min;
-        let effectiveMaxDate = dateMax || max;
-        if (effectiveMinDate && effectiveMaxDate) {
-          const minDateStr = new Date(effectiveMinDate).toLocaleDateString('zh-CN');
-          const maxDateStr = new Date(effectiveMaxDate).toLocaleDateString('zh-CN');
-          validationTexts.push(`日期范围: ${minDateStr} ~ ${maxDateStr}`);
-        } else if (effectiveMinDate) {
-          const minDateStr = new Date(effectiveMinDate).toLocaleDateString('zh-CN');
-          validationTexts.push(`最早日期: ${minDateStr}`);
-        } else if (effectiveMaxDate) {
-          const maxDateStr = new Date(effectiveMaxDate).toLocaleDateString('zh-CN');
-          validationTexts.push(`最晚日期: ${maxDateStr}`);
-        }
-        break;
-      case 'regex':
-        validationTexts.push('特定格式');
-        // 处理各种正则表达式名称
-        if (regexName) {
-          const regexNameMap: { [key: string]: string } = {
-            'phone': '手机号码格式',
-            'email': '电子邮箱格式',
-            'idcard': '身份证号码格式',
-            'date': '日期格式',
-            'number': '数字格式'
-          };
-          validationTexts.push(regexNameMap[regexName] || regexName);
-        } else {
-          validationTexts.push('请输入符合格式的内容');
-        }
-        break;
+    if (!columnPerm) return '';
+    const { editable, required, label, validation = {} } = columnPerm;
+    const { type, min, max, maxLength, options, isInteger, regex, regexName, dateMin, dateMax, format } = validation;
+    const permissionTexts: string[] = [];
+    // 编辑权限
+    permissionTexts.push(editable ? '可编辑' : '只读');
+    // 必填状态
+    if (required) {
+        permissionTexts.push('必填');
     }
-  }
-  
-  // 最大长度
-  if (maxLength) {
-    validationTexts.push(`最大长度: ${maxLength}`);
-  }
-  
-  // 选项限制
-  if (options && options.length > 0) {
-    validationTexts.push(`可选值: ${options.join('、')}`);
-  }
-  
-  if (validationTexts.length > 0) {
-    permissionTexts.push(validationTexts.join('; '));
-  }
-  
-  return permissionTexts.join('; ');
+    // 验证规则
+    const validationTexts: string[] = [];
+    // 数据类型
+    if (type) {
+        switch (type) {
+            case 'number':
+                validationTexts.push('数值类型');
+                if (min !== null) {
+                    validationTexts.push(`最小值: ${min}`);
+                }
+                if (max !== null) {
+                    validationTexts.push(`最大值: ${max}`);
+                }
+                if (isInteger) {
+                    validationTexts.push('必须为整数');
+                }
+                break;
+            case 'date':
+                validationTexts.push('日期类型');
+                if (format) {
+                    validationTexts.push(`格式: ${format}`);
+                }
+                // 优先使用dateMin/dateMax（用户提供的JSON格式），如果不存在则使用min/max
+                let effectiveMinDate = dateMin || min;
+                let effectiveMaxDate = dateMax || max;
+                if (effectiveMinDate && effectiveMaxDate) {
+                    const minDateStr = new Date(effectiveMinDate).toLocaleDateString('zh-CN');
+                    const maxDateStr = new Date(effectiveMaxDate).toLocaleDateString('zh-CN');
+                    validationTexts.push(`日期范围: ${minDateStr} ~ ${maxDateStr}`);
+                } else if (effectiveMinDate) {
+                    const minDateStr = new Date(effectiveMinDate).toLocaleDateString('zh-CN');
+                    validationTexts.push(`最早日期: ${minDateStr}`);
+                } else if (effectiveMaxDate) {
+                    const maxDateStr = new Date(effectiveMaxDate).toLocaleDateString('zh-CN');
+                    validationTexts.push(`最晚日期: ${maxDateStr}`);
+                }
+                break;
+            case 'regex':
+                validationTexts.push('特定格式');
+                // 处理各种正则表达式名称
+                if (regexName) {
+                    const regexNameMap: { [key: string]: string } = {
+                        'phone': '手机号码格式',
+                        'email': '电子邮箱格式',
+                        'idcard': '身份证号码格式',
+                        'date': '日期格式',
+                        'number': '数字格式'
+                    };
+                    validationTexts.push(regexNameMap[regexName] || regexName);
+                } else {
+                    validationTexts.push('请输入符合格式的内容');
+                }
+                break;
+        }
+    }
+    // 最大长度
+    if (maxLength) {
+        validationTexts.push(`最大长度: ${maxLength}`);
+    }
+    // 选项限制
+    if (options && options.length > 0) {
+        validationTexts.push(`可选值: ${options.join('、')}`);
+    }
+    if (validationTexts.length > 0) {
+        permissionTexts.push(validationTexts.join('; '));
+    }
+    return permissionTexts.join('; ');
 };
 </script>
 <style scoped lang="less">
