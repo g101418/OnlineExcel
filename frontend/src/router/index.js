@@ -5,6 +5,7 @@ import TaskGeneration from "../views/TaskGeneration.vue";
 import TaskCondition from "../views/TaskCondition.vue";
 import TaskRelease from "../views/TaskRelease.vue";
 import ErrorPage from "../views/ErrorPage.vue";
+import TableFilling from "../views/TableFilling.vue";
 import { useTaskStore } from "../stores/task";
 
 
@@ -34,6 +35,11 @@ const routes = [
         name: "Error",
         component: ErrorPage,
     },
+    {
+        path: "/fill",
+        name: "TableFilling",
+        component: TableFilling,
+    },
 ];
 
 
@@ -44,6 +50,12 @@ const router = createRouter({
 
 // 添加路由导航守卫
 router.beforeEach((to, from, next) => {
+    // 特殊处理TableFilling页面，直接允许访问
+    if (to.name === 'TableFilling') {
+        next();
+        return;
+    }
+    
     // 获取task store
     const taskStore = useTaskStore();
     

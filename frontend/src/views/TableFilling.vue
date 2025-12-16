@@ -1,539 +1,590 @@
 <template>
-  <div class="table-filling-root">
-    <!-- 任务信息展示区 -->
-    <div class="task-info-section">
-      <div class="task-header">
-        <h2>{{ taskInfo.taskName || '表格填报任务' }}</h2>
-        <div class="task-meta">
-          <span class="task-id">任务ID: {{ taskInfo.taskId }}</span>
-          <span class="deadline">截止日期: {{ formatDate(taskInfo.taskDeadline) }}</span>
-          <el-tag :type="getDeadlineStatus()" size="small">
-            {{ getDeadlineText() }}
-          </el-tag>
+    <div class="table-filling-root">
+        <!-- 任务信息 -->
+        <div class="task-info-section">
+            <div class="task-header">
+                <h2>{{ taskInfo.taskName || '表格填报任务' }}</h2>
+                <div class="task-meta">
+                    <span>任务ID：{{ taskInfo.taskId }}</span>
+                    <span>截止日期：{{ formatDate(taskInfo.taskDeadline) }}</span>
+                    <el-tag :type="getDeadlineStatus()" size="small">
+                        {{ getDeadlineText() }}
+                    </el-tag>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
+        <!-- 表格区域 -->
+        <div class="table-section">
 
-    <!-- 表格填报区 -->
-    <div class="table-section">
-      <div class="table-container" ref="tableContainer">
-        <hot-table
-          v-if="tableData.length > 0"
-          :data="tableData"
-          :columns="hotColumns"
-          :settings="hotSettings"
-          @afterChange="handleAfterChange"
-          @afterRowMove="handleAfterRowMove"
-          @afterCreateRow="handleAfterCreateRow"
-          @afterRemoveRow="handleAfterRemoveRow"
-        ></hot-table>
-        <div v-else class="empty-table">
-          <el-empty description="暂无表格数据" />
+            <!-- 表格 -->
+            <div class="table-wrapper">
+                <HotTable ref="hotTableRef" :key="originalHeaders.length" :settings="hotSettings" />
+            </div>
+            <!-- 校验汇总 -->
+            <div v-if="validationErrorCount > 0" class="mt10">
+                <el-alert 
+                    :title="`当前有 ${validationErrorCount} 处填写错误`" 
+                    type="error"
+                    show-icon 
+                    :closable="false" 
+                    :fit-content="true"
+                    center
+                    :title-size="16"
+                />
+            </div>
+            <!-- 调试按钮 -->
+            <div class="mt10">
+                <el-button type="info" size="small" @click="debugValidate">调试验证</el-button>
+                <el-button type="warning" size="small" @click="clearAllErrors">清除错误</el-button>
+            </div>
         </div>
-      </div>
-
-      <!-- 错误提示区 -->
-      <div v-if="validationErrors.length > 0" class="validation-errors">
-        <el-alert
-          v-for="(error, index) in validationErrors"
-          :key="index"
-          :title="error"
-          type="error"
-          show-icon
-          closable
-          @close="validationErrors.splice(index, 1)"
-        />
-      </div>
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+            <el-button>暂存</el-button>
+            <el-button type="primary" :disabled="!canSubmit">提交</el-button>
+        </div>
     </div>
-
-    <!-- 操作按钮区 -->
-    <div class="action-buttons">
-      <el-button type="warning" @click="handleSaveDraft">
-        暂存
-      </el-button>
-      <el-button type="default" @click="handleClose">
-        关闭
-      </el-button>
-      <el-button type="primary" @click="handleSubmit" :disabled="!canSubmit">
-        提交
-      </el-button>
-      <el-button v-if="submitted" type="danger" @click="handleWithdraw">
-        撤回
-      </el-button>
-    </div>
-  </div>
 </template>
-
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { ElMessage, ElAlert, ElEmpty, ElTag } from 'element-plus';
-import { useTaskStore } from '../stores/task';
-import { HotTable } from '@handsontable/vue3';
-import 'handsontable/dist/handsontable.full.css';
-
-// 导入API
-import { getTaskFillingData, saveDraft, submitTable, withdrawTable } from '../api/task';
-
-const router = useRouter();
-const route = useRoute();
-const store = useTaskStore();
-
-// 任务信息
+import { ref, reactive, computed, nextTick, watch } from 'vue'
+// ElementPlus
+import { ElTooltip, ElMessage, ElIcon } from 'element-plus'
+import { Tooltip } from 'element-plus/es/components/tooltip/index'
+import { WarningFilled } from '@element-plus/icons-vue'
+// Handsontable
+import { HotTable } from '@handsontable/vue3'
+import { registerAllModules } from 'handsontable/registry'
+import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
+import 'handsontable/dist/handsontable.full.css'
+// ======================
+// Handsontable 初始化
+// ======================
+registerAllModules()
+registerLanguageDictionary(zhCN)
+// ======================
+// 基础状态
+// ======================
+const hotTableRef = ref<any>(null)
 const taskInfo = reactive({
-  taskId: '',
-  taskName: '',
-  taskDeadline: null
-});
-
-// 表格数据
-const tableData = ref([]);
-const originalHeaders = ref([]);
-const permissions = ref({ row: {}, columns: [] });
-const tableContainer = ref(null);
-
-// 验证错误
-const validationErrors = ref([]);
-const submitted = ref(false);
-
-// 从URL参数获取链接码
-const linkCode = computed(() => route.query.link as string);
-
-// 格式化日期
-const formatDate = (dateString) => {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
-// 获取截止日期状态
-const getDeadlineStatus = () => {
-  if (!taskInfo.taskDeadline) return 'info';
-  const now = new Date();
-  const deadline = new Date(taskInfo.taskDeadline);
-  const diffDays = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
-  
-  if (diffDays < 0) return 'danger';
-  if (diffDays <= 3) return 'warning';
-  return 'success';
-};
-
-// 获取截止日期文本
-const getDeadlineText = () => {
-  if (!taskInfo.taskDeadline) return '无截止日期';
-  const now = new Date();
-  const deadline = new Date(taskInfo.taskDeadline);
-  const diffDays = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
-  
-  if (diffDays < 0) return '已过期';
-  if (diffDays === 0) return '今日截止';
-  return `剩余${diffDays}天`;
-};
-
-// 计算是否可以提交
-const canSubmit = computed(() => {
-  if (!tableData.value || tableData.value.length === 0) return false;
-  if (validationErrors.value.length > 0) return false;
-  if (submitted.value) return false;
-  return true;
-});
-
-// 配置Handsontable列
-const hotColumns = computed(() => {
-  if (!originalHeaders.value.length || !permissions.value.columns.length) return [];
-  
-  return originalHeaders.value.map((header, index) => {
-    const columnPerm = permissions.value.columns.find(col => col.label === header) || {};
+    taskId: '12345678',
+    taskName: '销售数据填报任务',
+    taskDeadline: '2025-12-31T23:59:59'
+})
+// 表头
+const originalHeaders = ref<string[]>([
+    '产品名称',
+    '销售数量',
+    '销售金额',
+    '销售日期',
+    '客户类型',
+    '区域',
+    '业务员手机号',
+    '备注'
+])
+// 表格数据（不含表头）
+const tableData = ref<any[][]>([
+    ['产品A', 100, 5000, '2025-12-01', '企业', '华东', '13800138000', ''],
+    ['产品B', 200, 8000, '2025-12-02', '个人', '华北', '13900139000', '重点客户'],
+    ['产品C', 50, 3000, '2025-12-03', '企业', '华南', '13700137000', ''],
+    ['产品D', 20, 1200, '2025-12-04', '个人', '西南', '13600136000', '试用'],
+    ['产品E', 500, 25000, '2025-12-05', '企业', '东北', '13500135000', '年度合同'],
+    ['产品F', 10, 800, '2025-12-06', '个人', '西北', '13400134000', ''],
+    ['产品G', 999, 99999, '2025-12-07', '企业', '华中', '13300133000', '超额']
+])
+// ======================
+// 权限与校验规则
+// ======================
+const permissions = {
+    row: {
+        addable: true,
+        deletable: true,
+        sortable: true
+    },
+    columns: [
+        { label: '产品名称', editable: false, required: true },
+        {
+            label: '销售数量',
+            editable: true,
+            required: true,
+            validation: { type: 'number', min: 1, max: 1000, isInteger: true }
+        },
+        {
+            label: '销售金额',
+            editable: true,
+            validation: { type: 'number', min: 0, max: 100000 }
+        },
+        {
+            label: '销售日期',
+            editable: true,
+            validation: {
+                type: 'date',
+                min: '2025-12-01',
+                max: '2025-12-31'
+            }
+        },
+        {
+            label: '客户类型',
+            editable: true,
+            required: true,
+            validation: { options: ['企业', '个人'] }
+        },
+        {
+            label: '区域',
+            editable: true,
+            validation: {
+                regex: '^(华东|华南|华北|华中|东北|西北|西南)$',
+                regexName: '大区名称'
+            }
+        },
+        {
+            label: '业务员手机号',
+            editable: true,
+            validation: {
+                regex: '^1[3-9]\\d{9}$',
+                regexName: '手机号'
+            }
+        },
+        {
+            label: '备注',
+            editable: true,
+            validation: { maxLength: 20 }
+        }
+    ]
+}
+// ======================
+// 新增：通用函数 - 生成各列权限提示
+// ======================
+function generateColumnTooltips(permissions: any): string[] {
+    const tooltips: string[] = [];
+    permissions.columns.forEach((col: any) => {
+        let tip = `【${col.label}】`;
+        if (!col.editable) {
+            tip += '只读';
+        } else {
+            tip += '可编辑';
+        }
+        if (col.required) {
+            tip += '，必填';
+        }
+        const v = col.validation || {};
+        if (v.type === 'number') {
+            if (v.isInteger) {
+                tip += '，整数';
+            } else {
+                tip += '，数字';
+            }
+            if (v.min != null && v.max != null) {
+                tip += `，${v.min}–${v.max}`;
+            } else if (v.min != null) {
+                tip += `，≥ ${v.min}`;
+            } else if (v.max != null) {
+                tip += `，≤ ${v.max}`;
+            }
+        } else if (v.type === 'date') {
+            tip += '，日期';
+            if (v.format) {
+                tip += `（格式：${v.format}）`;
+            }
+            if (v.min && v.max) {
+                // 简化日期显示，去掉时间部分
+                const minDate = new Date(v.min).toLocaleDateString('zh-CN');
+                const maxDate = new Date(v.max).toLocaleDateString('zh-CN');
+                tip += `，${minDate} ~ ${maxDate}`;
+            } else if (v.dateMin && v.dateMax) { // 处理参考JSON中的dateMin/dateMax
+                const minDate = new Date(v.dateMin).toLocaleDateString('zh-CN');
+                const maxDate = new Date(v.dateMax).toLocaleDateString('zh-CN');
+                tip += `，${minDate} ~ ${maxDate}`;
+            }
+        } else if (v.type === 'regex') {
+            tip += '，格式';
+            if (v.regexName) {
+                tip += `：${v.regexName}`;
+            } else if (v.regex) {
+                tip += '需匹配正则';
+            }
+        } else if (v.options && v.options.length > 0) {
+            tip += `，${v.options.join(' / ')}`;
+        }
+        if (v.maxLength != null) {
+            tip += `，最多 ${v.maxLength} 字`;
+        }
+        tooltips.push(tip);
+    });
+    return tooltips;
+}
+// 生成提示（基于permissions）
+const columnTooltips = generateColumnTooltips(permissions);
+// ======================
+// 校验状态
+// ======================
+const errors = ref<{[key: string]: string}>({ })
+const validationErrorCount = computed(() => Object.keys(errors.value).length)
+// ======================
+// 核心校验逻辑
+// ======================
+function getValidationError(value: any, perm: any): string | null {
+    if (!perm) return null
+    const v = value == null ? '' : String(value).trim()
+    const { required, validation = {} } = perm
+    const { type, min, max, isInteger, options, regex, maxLength } = validation
+    if (required && v === '') return '该字段为必填项'
+    // 只有当值为null或undefined时才跳过验证，空字符串、0、false等需要继续验证
+    if (v == null) return null
+    if (maxLength && v.length > maxLength) {
+        return `最多允许 ${maxLength} 个字符`
+    }
+    if (type === 'number') {
+        const num = Number(v)
+        if (isNaN(num)) return '必须为数字'
+        if (isInteger && !Number.isInteger(num)) return '必须为整数'
+        if (min != null && num < min) return `不能小于 ${min}`
+        if (max != null && num > max) return `不能大于 ${max}`
+    }
+    if (type === 'date') {
+        const d = new Date(v)
+        if (isNaN(d.getTime())) return '日期格式不正确'
+        if (min && d < new Date(min)) return `不能早于 ${min}`
+        if (max && d > new Date(max)) return `不能晚于 ${max}`
+    }
+    if (options && !options.includes(v)) {
+        return `只能填写：${options.join(' / ')}`
+    }
+    if (regex && !new RegExp(regex).test(v)) {
+        return '格式不正确'
+    }
+    return null
+}
+// ======================
+// Handsontable 配置
+// ======================
+const hotSettings = computed(() => ({
+  licenseKey: 'non-commercial-and-evaluation',
+  language: zhCN.languageCode,
+  data: tableData.value,
+  width: '100%',
+  height: '500px', // 之前修复的高度设置
+  stretchH: 'all', // 列宽拉伸填满表格
+  rowHeaders: true,
+  colHeaders: originalHeaders.value, // 改回原样，只显示标签
+  forceValidation: true, // 强制验证所有单元格
+  afterGetColHeader: function(col: number, TH: HTMLElement) {
+    if (col < 0 || !TH) return; // 跳过行头或其他无效列
+    // 删除所有tooltip相关代码
+    TH.removeAttribute('title');
+    if (TH.__tooltipInstance) {
+      delete TH.__tooltipInstance;
+    }
+  },
+  minRows: 5,
+  rowHeights: 36,
+  autoWrapRow: true,
+  autoWrapCol: true,
+  className: 'htCenter',
+  columns: originalHeaders.value.map((_, colIndex) => {
+    const perm = permissions.columns[colIndex]
     return {
-      data: index,
-      title: header,
-      readOnly: !columnPerm.editable,
-      validator: columnPerm.validation ? (value, callback) => validateCell(value, columnPerm.validation, callback) : undefined
-    };
-  });
-});
-
-// 配置Handsontable设置
-const hotSettings = computed(() => {
-  const rowPerm = permissions.value.row || {};
-  
-  return {
-    height: 500,
-    width: '100%',
-    colHeaders: originalHeaders.value,
-    rowHeaders: true,
-    contextMenu: true,
-    manualRowResize: true,
-    manualColumnResize: true,
-    allowInsertRow: rowPerm.addable,
-    allowRemoveRow: rowPerm.deletable,
-    allowRowReorder: rowPerm.sortable,
-    minRows: 5,
-    maxRows: rowPerm.addable ? undefined : tableData.value.length,
-    stretchH: 'all',
-    language: 'zh-CN',
-    licenseKey: 'non-commercial-and-evaluation'
-  };
-});
-
-// 单元格验证
-const validateCell = (value, validation, callback) => {
-  if (!validation) {
-    callback(true);
-    return;
-  }
-
-  const { type, min, max, maxLength, options, isInteger, regex, regexName } = validation;
-  const cellValue = String(value || '');
-
-  // 必填验证
-  if (validation.required && !cellValue.trim()) {
-    callback(false);
-    return;
-  }
-
-  // 最大长度验证
-  if (maxLength && cellValue.length > maxLength) {
-    callback(false);
-    return;
-  }
-
-  // 数值验证
-  if (type === 'number' && cellValue) {
-    const numValue = Number(cellValue);
-    if (isNaN(numValue)) {
-      callback(false);
-      return;
-    }
-    if (min !== null && numValue < min) {
-      callback(false);
-      return;
-    }
-    if (max !== null && numValue > max) {
-      callback(false);
-      return;
-    }
-    if (isInteger && !Number.isInteger(numValue)) {
-      callback(false);
-      return;
-    }
-  }
-
-  // 日期验证
-  if (type === 'date' && cellValue) {
-    const date = new Date(cellValue);
-    if (isNaN(date.getTime())) {
-      callback(false);
-      return;
-    }
-  }
-
-  // 选项验证
-  if (options && options.split(',').length > 0 && cellValue) {
-    const validOptions = options.split(',').map(opt => opt.trim());
-    if (!validOptions.includes(cellValue.trim())) {
-      callback(false);
-      return;
-    }
-  }
-
-  // 正则验证
-  if (regex && cellValue) {
-    const regexPattern = new RegExp(regex);
-    if (!regexPattern.test(cellValue)) {
-      callback(false);
-      return;
-    }
-  }
-
-  callback(true);
-};
-
-// 处理单元格值变化
-const handleAfterChange = (changes, source) => {
-  if (!changes || changes.length === 0) return;
-  
-  // 清除相关行的验证错误
-  changes.forEach(([row, col, oldValue, newValue]) => {
-    const header = originalHeaders.value[col];
-    const columnPerm = permissions.value.columns.find(col => col.label === header) || {};
-    
-    if (columnPerm.validation && columnPerm.validation.required) {
-      // 检查是否必填项为空
-      if (!newValue || newValue.toString().trim() === '') {
-        validationErrors.value.push(`第${row + 1}行，${header}字段为必填项`);
-      } else {
-        // 移除已修复的错误
-        const errorIndex = validationErrors.value.findIndex(err => 
-          err.includes(`第${row + 1}行`) && err.includes(header)
-        );
-        if (errorIndex > -1) {
-          validationErrors.value.splice(errorIndex, 1);
+      data: colIndex,
+      readOnly: !perm.editable,
+      validator: (value: any, callback: Function, validationParams: any, cellProperties: any) => {
+        try {
+          // 获取当前单元格的行列信息
+          let cellRow: number | undefined;
+          let cellCol: number | undefined;
+          
+          // 从cellProperties中获取行列信息
+          if (cellProperties && cellProperties.row !== undefined && cellProperties.col !== undefined) {
+            cellRow = cellProperties.row;
+            cellCol = cellProperties.col;
+          }
+          // 如果cellProperties中没有行列信息，尝试从validationParams中获取
+          else if (validationParams && validationParams.row !== undefined && validationParams.col !== undefined) {
+            cellRow = validationParams.row;
+            cellCol = validationParams.col;
+          }
+          // 作为最后手段，尝试获取当前选中的单元格
+          else if (hotTableRef.value && hotTableRef.value.hotInstance) {
+            const hot = hotTableRef.value.hotInstance;
+            const selection = hot.getSelectedRange();
+            if (selection && selection.start) {
+              cellRow = selection.start.row;
+              cellCol = selection.start.col;
+            }
+          }
+          
+          // 验证行列信息是否有效
+          const isValidCellPosition = cellRow !== undefined && cellRow !== null && !isNaN(cellRow) && 
+                                      cellCol !== undefined && cellCol !== null && !isNaN(cellCol);
+          
+          console.log(`validator调用: 行${cellRow}, 列${cellCol}, 值${value}`)
+          
+          // 执行验证逻辑
+          const error = getValidationError(value, perm);
+          
+          // 更新错误对象
+          if (error) {
+            let key: string;
+            if (isValidCellPosition) {
+              // 使用行列索引作为键，确保不同单元格的错误使用不同的键
+              key = `${cellRow},${cellCol}`;
+            } else {
+              // 如果无法获取有效行列信息，使用一个唯一键记录错误
+              key = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            }
+            // 确保错误对象的更新能触发响应式更新
+            errors.value = {
+              ...errors.value,
+              [key]: error
+            };
+            console.log(`添加错误后errors:`, errors.value);
+          } else {
+            // 如果验证通过，移除相关错误
+            if (isValidCellPosition) {
+              const key = `${cellRow},${cellCol}`;
+              // 创建新对象，确保Vue能检测到变化
+              const newErrors = { ...errors.value };
+              delete newErrors[key];
+              errors.value = newErrors;
+            }
+            console.log(`删除错误后errors:`, errors.value);
+          }
+          
+          // 调用回调函数，告知Handsontable验证结果
+          callback(!error);
+          console.log(`当前错误数量:`, Object.keys(errors.value).length);
+        } catch (e) {
+          console.error('验证器执行错误:', e);
+          // 发生错误时默认验证通过，避免表格卡死
+          callback(true);
         }
       }
     }
-  });
-};
-
-// 处理行移动
-const handleAfterRowMove = (rows, target) => {
-  if (!permissions.value.row.sortable) {
-    ElMessage.warning('不允许调整行顺序');
-    return;
-  }
-  ElMessage.success('行顺序已调整');
-};
-
-// 处理创建新行
-const handleAfterCreateRow = (index, amount) => {
-  if (!permissions.value.row.addable) {
-    ElMessage.warning('不允许新增行');
-    return;
-  }
-  ElMessage.success('已新增行');
-};
-
-// 处理删除行
-const handleAfterRemoveRow = (index, amount) => {
-  if (!permissions.value.row.deletable) {
-    ElMessage.warning('不允许删除行');
-    return;
-  }
-  ElMessage.success('已删除行');
-};
-
-// 获取服务端数据
-const fetchTaskData = async () => {
-  if (!linkCode.value) {
-    ElMessage.error('无效的任务链接');
-    router.push('/');
-    return;
-  }
-
-  try {
-    // TODO: 调用服务端API获取任务数据
-    // const response = await getTaskFillingData(linkCode.value);
-    
-    // 模拟数据
-    const response = {
-      taskId: linkCode.value,
-      taskName: '销售数据填报任务',
-      taskDeadline: '2025-12-31T23:59:59',
-      tableData: [
-        ['产品名称', '销售数量', '销售金额', '销售日期', '客户类型'],
-        ['产品A', 100, 5000, '2025-12-01', '企业'],
-        ['产品B', 200, 8000, '2025-12-02', '个人'],
-        ['产品C', 150, 6000, '2025-12-03', '企业'],
-        ['产品D', 300, 12000, '2025-12-04', '个人']
-      ],
-      permissions: {
-        row: {
-          addable: true,
-          deletable: true,
-          sortable: true
-        },
-        columns: [
-          { label: '产品名称', editable: true, validation: { required: true, maxLength: 50 } },
-          { label: '销售数量', editable: true, validation: { required: true, type: 'number', min: 1, isInteger: true } },
-          { label: '销售金额', editable: true, validation: { required: true, type: 'number', min: 0 } },
-          { label: '销售日期', editable: true, validation: { required: true, type: 'date' } },
-          { label: '客户类型', editable: true, validation: { required: true, options: '企业,个人,政府' } }
-        ]
+  }),
+  comments: true,
+  copyPaste: true,
+  manualRowMove: permissions.row.sortable, // 启用行拖拽功能
+  contextMenu: {
+    items: {
+      'row_above': {
+        name: '在上方插入行',
+        hidden: !permissions.row.addable // 根据权限控制是否显示插入行选项
+      },
+      'row_below': {
+        name: '在下方插入行',
+        hidden: !permissions.row.addable // 根据权限控制是否显示插入行选项
+      },
+      'hsep1': '---------',
+      'remove_row': {
+        name: '删除行',
+        hidden: !permissions.row.deletable // 根据权限控制是否显示删除行选项
+      },
+      'hsep2': '---------',
+      'undo': {
+        name: '撤销'
+      },
+      'redo': {
+        name: '重做'
       }
-    };
-
-    // 更新任务信息
-    taskInfo.taskId = response.taskId;
-    taskInfo.taskName = response.taskName;
-    taskInfo.taskDeadline = response.taskDeadline;
-
-    // 更新表格数据
-    if (response.tableData && response.tableData.length > 0) {
-      // 提取表头
-      originalHeaders.value = response.tableData[0];
-      // 设置表格数据（排除表头）
-      tableData.value = response.tableData.slice(1);
     }
-
-    // 更新权限设置
-    permissions.value = response.permissions || { row: {}, columns: [] };
-
-  } catch (error) {
-    console.error('获取任务数据失败:', error);
-    ElMessage.error('获取任务数据失败，请稍后重试');
-    router.push('/');
-  }
-};
-
-// 暂存功能
-const handleSaveDraft = async () => {
-  try {
-    // TODO: 调用服务端API保存草稿
-    // await saveDraft(linkCode.value, tableData.value);
+  },
+  // 监听行删除事件，更新错误计数
+  afterRemoveRow: function() {
+    // 重新验证所有单元格
+    const hot = this;
     
-    ElMessage.success('表格已暂存');
-  } catch (error) {
-    console.error('暂存失败:', error);
-    ElMessage.error('暂存失败，请稍后重试');
-  }
-};
-
-// 关闭功能
-const handleClose = () => {
-  router.push('/');
-};
-
-// 提交功能
-const handleSubmit = async () => {
-  if (!canSubmit.value) return;
-
-  try {
-    // TODO: 调用服务端API提交表格
-    // await submitTable(linkCode.value, tableData.value);
+    // 清空所有错误
+    Object.keys(errors.value).forEach(key => {
+      delete errors.value[key];
+    });
     
-    submitted.value = true;
-    ElMessage.success('表格已提交');
-  } catch (error) {
-    console.error('提交失败:', error);
-    ElMessage.error('提交失败，请稍后重试');
+    for (let row = 0; row < hot.countRows(); row++) {
+      for (let col = 0; col < hot.countCols(); col++) {
+        // 确保列索引在权限配置范围内
+        if (col >= permissions.columns.length) {
+          continue;
+        }
+        const value = hot.getDataAtCell(row, col);
+        const perm = permissions.columns[col];
+        const error = getValidationError(value, perm);
+        
+        if (error) {
+          errors.value[`${row},${col}`] = error;
+        }
+      }
+    }
   }
-};
+}))
+// ======================
+// 业务辅助
+// ======================
+const canSubmit = computed(() => validationErrorCount.value === 0)
 
-// 撤回功能
-const handleWithdraw = async () => {
-  try {
-    // TODO: 调用服务端API撤回表格
-    // await withdrawTable(linkCode.value);
-    
-    submitted.value = false;
-    ElMessage.success('表格已撤回，可以继续编辑');
-  } catch (error) {
-    console.error('撤回失败:', error);
-    ElMessage.error('撤回失败，请稍后重试');
+
+
+// 调试函数
+function debugValidate() {
+  console.log('当前errors对象：', errors.value)
+  console.log('Object.keys(errors):', Object.keys(errors.value))
+  console.log('errors的长度：', Object.keys(errors.value).length)
+  console.log('validationErrorCount.value:', validationErrorCount.value)
+  
+  // 手动添加几个错误测试
+  errors.value['0,0'] = '测试错误1'
+  errors.value['1,1'] = '测试错误2'
+  errors.value['2,2'] = '测试错误3'
+  
+  console.log('手动添加错误后：')
+  console.log('当前errors对象：', errors.value)
+  console.log('Object.keys(errors):', Object.keys(errors.value))
+  console.log('errors的长度：', Object.keys(errors.value).length)
+  console.log('validationErrorCount.value:', validationErrorCount.value)
+}
+
+function clearAllErrors() {
+  Object.keys(errors.value).forEach(key => {
+    delete errors.value[key]
+  })
+  console.log('所有错误已清除')
+  console.log('当前errors对象：', errors.value)
+  console.log('errors的长度：', Object.keys(errors.value).length)
+  console.log('validationErrorCount.value:', validationErrorCount.value)
+}
+
+const formatDate = (d: string) => new Date(d).toLocaleString()
+const getDeadlineStatus = () => 'success'
+const getDeadlineText = () => '进行中'
+const getRowOperationText = () => '允许新增行，允许拖拽排序'
+
+// 生成列权限的用户友好提示
+const generateColumnPermissionText = (columnPerm: any) => {
+  if (!columnPerm) return '';
+  
+  const { editable, required, label, validation = {} } = columnPerm;
+  const { type, min, max, maxLength, options, isInteger, regex, regexName, dateMin, dateMax, format } = validation;
+  
+  const permissionTexts: string[] = [];
+  
+  // 编辑权限
+  permissionTexts.push(editable ? '可编辑' : '只读');
+  
+  // 必填状态
+  if (required) {
+    permissionTexts.push('必填');
   }
+  
+  // 验证规则
+  const validationTexts: string[] = [];
+  
+  // 数据类型
+  if (type) {
+    switch (type) {
+      case 'number':
+        validationTexts.push('数值类型');
+        if (min !== null) {
+          validationTexts.push(`最小值: ${min}`);
+        }
+        if (max !== null) {
+          validationTexts.push(`最大值: ${max}`);
+        }
+        if (isInteger) {
+          validationTexts.push('必须为整数');
+        }
+        break;
+      case 'date':
+        validationTexts.push('日期类型');
+        if (format) {
+          validationTexts.push(`格式: ${format}`);
+        }
+        // 优先使用dateMin/dateMax（用户提供的JSON格式），如果不存在则使用min/max
+        let effectiveMinDate = dateMin || min;
+        let effectiveMaxDate = dateMax || max;
+        if (effectiveMinDate && effectiveMaxDate) {
+          const minDateStr = new Date(effectiveMinDate).toLocaleDateString('zh-CN');
+          const maxDateStr = new Date(effectiveMaxDate).toLocaleDateString('zh-CN');
+          validationTexts.push(`日期范围: ${minDateStr} ~ ${maxDateStr}`);
+        } else if (effectiveMinDate) {
+          const minDateStr = new Date(effectiveMinDate).toLocaleDateString('zh-CN');
+          validationTexts.push(`最早日期: ${minDateStr}`);
+        } else if (effectiveMaxDate) {
+          const maxDateStr = new Date(effectiveMaxDate).toLocaleDateString('zh-CN');
+          validationTexts.push(`最晚日期: ${maxDateStr}`);
+        }
+        break;
+      case 'regex':
+        validationTexts.push('特定格式');
+        // 处理各种正则表达式名称
+        if (regexName) {
+          const regexNameMap: { [key: string]: string } = {
+            'phone': '手机号码格式',
+            'email': '电子邮箱格式',
+            'idcard': '身份证号码格式',
+            'date': '日期格式',
+            'number': '数字格式'
+          };
+          validationTexts.push(regexNameMap[regexName] || regexName);
+        } else {
+          validationTexts.push('请输入符合格式的内容');
+        }
+        break;
+    }
+  }
+  
+  // 最大长度
+  if (maxLength) {
+    validationTexts.push(`最大长度: ${maxLength}`);
+  }
+  
+  // 选项限制
+  if (options && options.length > 0) {
+    validationTexts.push(`可选值: ${options.join('、')}`);
+  }
+  
+  if (validationTexts.length > 0) {
+    permissionTexts.push(validationTexts.join('; '));
+  }
+  
+  return permissionTexts.join('; ');
 };
-
-
-
-// 页面挂载时获取数据
-onMounted(() => {
-  fetchTaskData();
-});
 </script>
-
 <style scoped lang="less">
+/* 页面禁止横向滚动 */
+:global(body) {
+    overflow-x: hidden;
+}
+
 .table-filling-root {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-  font-family: 'Arial', sans-serif;
-}
-
-.task-info-section {
-  background-color: #f5f7fa;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-}
-
-.task-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 15px;
-}
-
-.task-header h2 {
-  margin: 0;
-  color: #303133;
-  font-size: 24px;
-}
-
-.task-meta {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.task-id {
-  color: #606266;
-  font-weight: 500;
-}
-
-.deadline {
-  color: #606266;
+    padding: 20px;
 }
 
 .table-section {
-  background-color: #fff;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+    margin-top: 20px;
 }
 
-.table-container {
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  overflow: hidden;
+.table-wrapper {
+    width: 100%;
+    overflow-x: hidden; // ⭐ 页面不横滚
 }
 
-.empty-table {
-  padding: 50px 0;
-  text-align: center;
+/* Handsontable 内部允许横向滚动 */
+:deep(.handsontable) {
+    overflow-x: auto;
 }
 
-.validation-errors {
-  margin-top: 15px;
-  max-height: 200px;
-  overflow-y: auto;
+.help-list {
+    padding-left: 20px;
+
+    li {
+        margin-bottom: 4px;
+    }
+}
+
+.mt10 {
+    margin-top: 10px;
 }
 
 .action-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-/* Handsontable 样式调整 */
-:deep(.ht_master) {
-  border: none;
-}
-
-:deep(.ht_clone_top) {
-  border-bottom: 1px solid #ebeef5;
-}
-
-:deep(.ht_clone_left) {
-  border-right: 1px solid #ebeef5;
-}
-
-:deep(.ht_core) {
-  font-size: 14px;
-}
-
-:deep(.htHeader) {
-  background-color: #f5f7fa;
-  font-weight: 500;
-  color: #303133;
-}
-
-:deep(.htInvalid) {
-  background-color: rgba(255, 76, 76, 0.1);
-  border: 1px solid #f56c6c !important;
-}
-
-:deep(.htContextMenu) {
-  z-index: 1000;
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
 }
 </style>
