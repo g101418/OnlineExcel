@@ -67,19 +67,23 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       });
     });
     
-    // 创建任务提交表
-    db.run(`CREATE TABLE IF NOT EXISTS task_submissions (
+    // 创建表格填报数据表（取代task_submissions）
+    db.run(`CREATE TABLE IF NOT EXISTS table_fillings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_id INTEGER NOT NULL,
-      tableLink TEXT NOT NULL,
-      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      submitted_data JSON NOT NULL,
-      FOREIGN KEY (task_id) REFERENCES tasks (id)
+      filling_task_id TEXT NOT NULL UNIQUE,
+      task_name TEXT NOT NULL,
+      original_task_id TEXT NOT NULL,
+      headers JSON NOT NULL DEFAULT '[]',
+      original_table_data JSON NOT NULL DEFAULT '[]',
+      modified_table_data JSON NOT NULL DEFAULT '[]',
+      filling_status TEXT DEFAULT 'in_progress',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (original_task_id) REFERENCES tasks (taskId)
     )`, (err) => {
       if (err) {
         console.error(err.message);
       } else {
-        console.log('Created task_submissions table.');
+        console.log('Created table_fillings table.');
       }
     });
   }
