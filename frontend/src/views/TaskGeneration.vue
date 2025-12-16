@@ -112,6 +112,24 @@ const goHome = () => {
 const handleSetConditions = () => {
   if (!currentTask.value) return;
   
+  // 当启用拆分时，检查选择的列是否有空白单元格
+  if (splitEnabled.value && selectedHeader.value) {
+    // 找到选择的列在headers中的索引
+    const columnIndex = headers.value.indexOf(selectedHeader.value);
+    if (columnIndex !== -1) {
+      // 检查该列是否有空白单元格
+      const hasEmptyCells = rawData.value.some(row => {
+        const cellValue = row[columnIndex];
+        return cellValue === undefined || cellValue === null || String(cellValue).trim() === '';
+      });
+      
+      if (hasEmptyCells) {
+        ElMessage.error(`选择的拆分列 "${selectedHeader.value}" 包含空白单元格，请确保该列所有单元格都有值`);
+        return;
+      }
+    }
+  }
+  
   // 检查状态是否发生了变更
   const statusChanged = splitEnabled.value !== currentTask.value.splitEnabled || 
                        (splitEnabled.value && selectedHeader.value !== currentTask.value.selectedHeader);

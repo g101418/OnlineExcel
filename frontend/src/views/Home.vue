@@ -418,6 +418,16 @@ const submitUpload = async () => {
     // 确保文件解析完成，重新解析以保证数据最新
     const { headers, dataRows } = await parseFileToStore(selectedFile.value as File);
 
+    // 检查是否有实际数据行
+    if (!dataRows || dataRows.length === 0) {
+      ElMessage.error("表格必须包含数据行，不能为空或只上传表头");
+      selectedFile.value = null;
+      fileList.value = [];
+      uploading.value = false;
+      uploadProgress.value = 0;
+      return;
+    }
+
     // 检查表头是否重复
     if (headers && headers.length > 0) {
       const headerSet = new Set();
