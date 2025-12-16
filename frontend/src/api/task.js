@@ -58,3 +58,61 @@ export const getTaskData = async (taskId) => {
     throw error;
   }
 };
+
+/**
+ * 获取表格填报数据
+ * @param {string} linkCode - 任务链接码
+ * @returns {Promise<Object>} - 返回任务填报数据
+ */
+export const getTaskFillingData = async (linkCode) => {
+  try {
+    return await get(`/task/filling/${linkCode}`);
+  } catch (error) {
+    console.error("获取表格填报数据出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 保存表格草稿
+ * @param {string} linkCode - 任务链接码
+ * @param {Array} tableData - 表格数据
+ * @returns {Promise<Object>} - 返回保存结果
+ */
+export const saveDraft = async (linkCode, tableData) => {
+  try {
+    return await post(`/task/filling/${linkCode}/draft`, { tableData });
+  } catch (error) {
+    console.error("保存表格草稿出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 提交表格数据
+ * @param {string} linkCode - 任务链接码
+ * @param {Array} tableData - 表格数据
+ * @returns {Promise<Object>} - 返回提交结果
+ */
+export const submitTable = async (linkCode, tableData) => {
+  try {
+    return await post(`/task/filling/${linkCode}/submit`, { tableData });
+  } catch (error) {
+    console.error("提交表格数据出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 撤回表格提交
+ * @param {string} linkCode - 任务链接码
+ * @returns {Promise<Object>} - 返回撤回结果
+ */
+export const withdrawTable = async (linkCode) => {
+  try {
+    return await post(`/task/filling/${linkCode}/withdraw`);
+  } catch (error) {
+    console.error("撤回表格提交出错:", error);
+    throw error;
+  }
+};
