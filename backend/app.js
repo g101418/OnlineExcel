@@ -50,8 +50,9 @@ app.post('/api/save-task', (req, res) => {
     const sql = `INSERT INTO tasks (
       taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
       selectedHeader, split, header, 
-      splitData, permissions, tableLinks
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      splitData, permissions, tableLinks,
+      updateTime, splitEnabled, permissionPanelCollapsed, progress
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     
     db.run(sql, [
       taskId,
@@ -65,7 +66,11 @@ app.post('/api/save-task', (req, res) => {
       header,
       JSON.stringify(splitData),
       JSON.stringify(permissions),
-      JSON.stringify(tableLinks)
+      JSON.stringify(tableLinks),
+      JSON.stringify(req.body.updateTime || new Date().toISOString()),
+      req.body.splitEnabled || false,
+      req.body.permissionPanelCollapsed || false,
+      req.body.progress || 'generation'
     ], function(err) {
       if (err) {
         return res.status(500).json({ error: err.message });

@@ -322,18 +322,37 @@ const saveSettingsAndRelease = async () => {
 
     // 准备发送到服务端的数据
     const taskData = {
+      // 任务基本信息
       taskId: taskId.value,
       fileName: fileName.value,
-      taskName: taskForm.taskName, // 添加任务名称
-      taskDeadline: taskForm.taskDeadline, // 添加任务截止日期
-      tableLinks: tableCodes, // 只发送随机编码数组
+      taskName: taskForm.taskName,
+      taskDeadline: taskForm.taskDeadline,
+      updateTime: currentTask.value?.updateTime || new Date().toISOString(),
+      
+      // 上传的数据
       uploadedHeaders: currentTask.value?.uploadedHeaders || [],
       uploadedData: currentTask.value?.uploadedData || [],
+      
+      // 拆分相关信息
+      splitEnabled: currentTask.value?.splitEnabled || false,
+      selectedHeader: currentTask.value?.selectedHeader || '',
       split: split.value,
       header: header.value,
-      selectedHeader: currentTask.value?.selectedHeader || '',
+      
+      // 拆分后的表格数据
       splitData: currentTask.value?.splitData || [],
-      permissions: currentTask.value?.permissions || { row: {}, columns: [] }
+      
+      // 生成的表格链接（只发送随机编码数组）
+      tableLinks: tableCodes,
+      
+      // 权限设置
+      permissions: currentTask.value?.permissions || { row: {}, columns: [] },
+      
+      // 面板折叠状态
+      permissionPanelCollapsed: currentTask.value?.permissionPanelCollapsed || false,
+      
+      // 处理进度状态
+      progress: currentTask.value?.progress || 'generation'
     };
 
     // 调用API保存设置到服务端
