@@ -24,7 +24,6 @@
                 <el-alert :title="`当前有 ${validationErrorCount} 处填写错误`" type="error" show-icon :closable="false"
                     :fit-content="true" center :title-size="16" />
             </div>
-
         </div>
         <!-- 操作按钮 -->
         <div class="action-buttons">
@@ -322,6 +321,14 @@ const hotSettings = computed(() => ({
             delete newErrors[key];
             errors.value = newErrors;
         }
+    },
+    afterCreateRow: function () {
+        errors.value = {};
+        this.validateCells();
+    },
+    afterRowMove: function () {
+        errors.value = {};
+        this.validateCells();
     },
     afterRemoveRow: function () {
         errors.value = {};
