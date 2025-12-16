@@ -18,7 +18,7 @@
         <el-table-column label="链接" min-width="200">
           <template #default="scope">
             <el-tooltip content="点击复制链接" placement="top">
-              <span class="copy-clickable" @click="copyLink(scope.row.link)">{{ shortenLink(scope.row.link) }}</span>
+              <span class="copy-clickable" @click="copyLink(scope.row.code)">{{ shortenLink(scope.row.code) }}</span>
             </el-tooltip>
           </template>
         </el-table-column>
@@ -96,25 +96,16 @@ const splitTablesWithLinks = computed(() => {
 });
 
 // 链接简写函数：简化显示的链接，保持复制使用完整链接
-const shortenLink = (fullLink) => {
-  if (!fullLink) return '';
-  try {
-    // 解析URL获取协议和域名部分
-    const url = new URL(fullLink);
-    // 提取查询参数中的link值
-    const linkParam = url.searchParams.get('link') || '';
-    // 返回简化格式：协议://...link=xxx
-    return `${url.protocol}//...link=${linkParam}`;
-  } catch (error) {
-    // 解析失败时返回原链接
-    return fullLink;
-  }
+const shortenLink = (code) => {
+  if (!code) return '';
+  return `http://...link=${code}`;
 };
 
 // 复制链接
-const copyLink = async (link) => {
+const copyLink = async (code) => {
+  const fullLink = `${window.location.origin}/process-table?link=${code}`;
   try {
-    await navigator.clipboard.writeText(link);
+    await navigator.clipboard.writeText(fullLink);
     ElMessage.success({
       message: "链接已成功复制到剪贴板！",
       duration: 1000,
@@ -122,7 +113,7 @@ const copyLink = async (link) => {
   } catch (err) {
     // 兼容方案
     const textarea = document.createElement("textarea");
-    textarea.value = link;
+    textarea.value = fullLink;
     textarea.style.position = "fixed";
     document.body.appendChild(textarea);
     textarea.focus();
@@ -145,7 +136,10 @@ const copyLink = async (link) => {
 
 // 一键导出所有链接
 const exportAllLinks = async () => {
-  const linksText = splitTablesWithLinks.value.map(table => `${table.name}\t${table.link}`).join("\n");
+  const linksText = splitTablesWithLinks.value.map(table => {
+    const fullLink = `${window.location.origin}/process-table?link=${table.code}`;
+    return `${table.name}\t${fullLink}`;
+  }).join("\n");
   
   try {
     await navigator.clipboard.writeText(linksText);
@@ -253,7 +247,7 @@ const fetchSplitTables = async () => {
           id: index + 1,
           name: table.sheetName || `表格${index + 1}`,
           rowCount: table.data ? table.data.length : 0,
-          link: `http://${window.location.hostname}:3000/fill?link=${linkCode}`,
+          code: linkCode,
           status: '未上传',
           originalData: table
         };

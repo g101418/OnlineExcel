@@ -32,6 +32,7 @@
           <p v-if="header"><strong>拆分字段：</strong>{{ header }}</p>
         </div>
         <el-table :data="splitTables" style="width: 100%">
+          <el-table-column type="index" label="序号" width="80" />
           <el-table-column prop="name" label="表格名称" width="180" />
           <el-table-column prop="rowCount" label="行数" width="180" />
           <el-table-column label="操作">
@@ -49,7 +50,7 @@
 
       <!-- 添加操作按钮 -->
       <div class="actions">
-        <el-button type="primary" @click="saveSettings">保存设置并发布</el-button>
+        <el-button type="primary" @click="saveSettingsAndRelease">保存设置并发布</el-button>
         <el-button @click="goToTaskGeneration">返回生成表格</el-button>
       </div>
     </div>
@@ -292,7 +293,7 @@ const goToTaskGeneration = async () => {
 
 const goHome = () => router.push({ path: "/" });
 
-const saveSettings = async () => {
+const saveSettingsAndRelease = async () => {
   // 验证任务信息
   if (!validateTaskInfo()) {
     return;
@@ -302,7 +303,7 @@ const saveSettings = async () => {
     // 生成表格随机编码
     const generateTableCode = (table, index) => {
       const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
-      const tableIdentifier = `${table.name || `table_${index}`}:${table.rowCount}:${index}`;
+      const tableIdentifier = table.name || `table_${index}`;
       const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
       return SparkMD5.hash(metaStr).slice(0, 28);
     };
@@ -312,11 +313,9 @@ const saveSettings = async () => {
     // 保存到store时保留完整信息，方便前端使用
     const tableLinks = splitTables.value.map((table, index) => ({
       name: table.name,
-      code: tableCodes[index],
-      link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
+      code: tableCodes[index]
     }));
     store.setTableLinks(taskId.value, tableLinks);
-
     // 将任务名称和截止日期保存到store
     store.setTaskName(taskId.value, taskForm.taskName);
     store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
