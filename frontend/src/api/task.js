@@ -90,6 +90,20 @@ export const getFullTableFillingStatus = async (taskId) => {
 };
 
 /**
+ * 获取任务所有子任务的最新状态
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Array>} - 返回子任务状态列表
+ */
+export const getSubTaskStatuses = async (taskId) => {
+  try {
+    return await get(`/task/get-sub-task-statuses/${taskId}`);
+  } catch (error) {
+    console.error("获取子任务状态出错:", error);
+    throw error;
+  }
+};
+
+/**
  * 获取任务某个拆分后表格，填报者填报的表格数据
  * @param {string} linkCode - 任务链接码
  * @returns {Promise<Object>} - 返回表格数据

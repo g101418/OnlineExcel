@@ -239,9 +239,9 @@ exports.saveDraft = (linkCode, tableData, callback) => {
   });
 };
 
-// 撤回表格提交
+// 撤回表格提交（改为已退回状态）
 exports.withdrawTable = (linkCode, callback) => {
-  const sql = `UPDATE table_fillings SET filling_status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE filling_task_id = ?`;
+  const sql = `UPDATE table_fillings SET filling_status = 'returned', updated_at = CURRENT_TIMESTAMP WHERE filling_task_id = ?`;
   db.run(sql, [linkCode], function(err) {
     if (err) {
       return callback(err);
@@ -253,9 +253,20 @@ exports.withdrawTable = (linkCode, callback) => {
     
     callback(null, {
       linkCode,
-      status: 'in_progress',
-      message: 'Table submission withdrawn successfully'
+      status: 'returned',
+      message: 'Table submission returned successfully'
     });
+  });
+};
+
+// 获取任务所有子任务的状态
+exports.getSubTaskStatuses = (taskId, callback) => {
+  const sql = `SELECT filling_task_id, filling_status FROM table_fillings WHERE original_task_id = ?`;
+  db.all(sql, [taskId], (err, statuses) => {
+    if (err) {
+      return callback(err);
+    }
+    callback(null, statuses);
   });
 };
 

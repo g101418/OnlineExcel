@@ -224,6 +224,19 @@ const withdrawTable = (req, res) => {
   });
 };
 
+// 11. 获取任务所有子任务的状态
+const getSubTaskStatuses = (req, res) => {
+  const taskId = req.params.taskId;
+  
+  taskService.getSubTaskStatuses(taskId, (err, statuses) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    res.status(200).json(statuses);
+  });
+};
+
 module.exports = {
   saveTask,
   getTaskReleaseData,
@@ -236,5 +249,6 @@ module.exports = {
   getTaskFillingData,
   getTaskFillingTableData,
   saveDraft,
-  withdrawTable
+  withdrawTable,
+  getSubTaskStatuses
 };

@@ -23,6 +23,9 @@ router.get('/task/tasks', taskController.getAllTasks);
 // 6. 获取任务完整数据 - 原有接口，保留
 router.get('/task/get-task-data/:taskId', taskController.getTaskData);
 
+// 7. 获取任务所有子任务的最新状态
+router.get('/task/get-sub-task-statuses/:taskId', taskController.getSubTaskStatuses);
+
 // ====================== /api/table-filling/ ======================
 // 针对拆分后单个表的操作
 

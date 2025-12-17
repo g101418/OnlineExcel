@@ -51,6 +51,34 @@
         </el-table-column>
       </el-table>
     </div>
+    
+    <!-- 表格数据查看对话框 -->
+    <el-dialog
+      v-model="tableDataDialogVisible"
+      title="表格数据"
+      width="80%"
+    >
+      <div v-if="tableDataLoading" class="dialog-loading">
+        <el-spinner size="large" />
+        <div>加载中...</div>
+      </div>
+      <el-table v-else-if="tableData && tableData.table_data && tableData.table_data.length > 0" :data="tableData.table_data" style="width: 100%">
+        <el-table-column 
+          v-for="(column, index) in tableHeaders" 
+          :key="index" 
+          :prop="'col' + index" 
+          :label="column" 
+        />
+      </el-table>
+      <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)" class="no-data">
+        该表格没有数据
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="tableDataDialogVisible = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -61,7 +89,7 @@ import { ElMessage } from "element-plus";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore } from "../stores/task";
 // 导入API
-import { getTaskReleaseData, getTaskData, deleteTask } from "../api/task";
+import { getTaskReleaseData, getTaskData, deleteTask, getSubTaskStatuses, getTableData, withdrawTable } from "../api/task";
 
 const router = useRouter();
 const route = useRoute();
@@ -88,6 +116,12 @@ const loading = ref(false);
 const splitTablesWithLinks = computed(() => {
   return splitTables.value;
 });
+
+// 表格数据查看相关变量
+const tableDataDialogVisible = ref(false);
+const tableData = ref(null);
+const tableDataLoading = ref(false);
+const tableHeaders = ref([]);
 
 // 链接简写函数：简化显示的链接，保持复制使用完整链接
 const shortenLink = (code) => {
@@ -203,21 +237,44 @@ const goToTaskCondition = async () => {
   }
 };
 
-// 查看表格详情（TODO: 后期需要实现从后端获取数据并展示详情）
-const viewTable = (table) => {
-  // TODO: 此功能需要从后端获取表格的详情数据
-  // TODO: 需要实现表格详情展示的对话框或页面
-  console.log("查看表格详情:", table);
-  ElMessage.info("查看功能尚未实现，后期将从后端获取数据");
+// 查看表格详情
+const viewTable = async (table) => {
+  tableDataLoading.value = true;
+  tableDataDialogVisible.value = true;
+  try {
+    const response = await getTableData(table.code);
+    // 将二维数组转换为对象数组，以便el-table正确渲染
+    const tableDataArray = response.table_data.map(row => {
+      const rowObj = {};
+      row.forEach((cell, index) => {
+        rowObj["col" + index] = cell;
+      });
+      return rowObj;
+    });
+    tableData.value = {
+      ...response,
+      table_data: tableDataArray
+    };
+    // 使用当前任务的uploadedHeaders作为表头
+    tableHeaders.value = currentTask.value?.uploadedHeaders || [];
+  } catch (error) {
+    console.error("获取表格数据失败:", error);
+    ElMessage.error("获取表格数据失败，请稍后重试");
+  } finally {
+    tableDataLoading.value = false;
+  }
 };
 
-// 退回表格（TODO: 后期需要实现退回的后端逻辑）
-const rejectTable = (table) => {
-  // TODO: 此功能需要调用后端API来实现表格的退回操作
-  // TODO: 需要处理退回后的状态更新和用户反馈
-  console.log("退回表格:", table);
-  table.status = '已退回'; // 更新状态为已退回
-  ElMessage.info("表格已退回，状态已更新为已退回");
+// 退回表格
+const rejectTable = async (table) => {
+  try {
+    await withdrawTable(table.code);
+    table.status = '已退回';
+    ElMessage.success("表格已退回");
+  } catch (error) {
+    console.error("退回表格失败:", error);
+    ElMessage.error("退回表格失败，请稍后重试");
+  }
 };
 
 // 获取拆分表格数据（从服务端获取）
@@ -271,6 +328,31 @@ const fetchSplitTables = async () => {
         originalData: table
       };
     });
+    
+    // 获取最新的子任务状态
+    const subtaskStatuses = await getSubTaskStatuses(route.query.taskId as string);
+    
+    // 更新表格状态
+    if (subtaskStatuses && subtaskStatuses.length > 0) {
+      splitTables.value.forEach(table => {
+        const statusInfo = subtaskStatuses.find(status => status.filling_task_id === table.code);
+        if (statusInfo) {
+          // 映射后端状态到前端显示
+          switch (statusInfo.filling_status) {
+            case 'submitted':
+              table.status = '已上传';
+              break;
+            case 'returned':
+              table.status = '已退回';
+              break;
+            case 'in_progress':
+            default:
+              table.status = '未上传';
+              break;
+          }
+        }
+      });
+    }
     
     // 标记任务为有效
     isTaskValid.value = true;
