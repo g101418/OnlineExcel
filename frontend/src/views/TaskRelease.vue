@@ -241,7 +241,18 @@ const fetchSplitTables = async () => {
     }
     
     // 将服务端返回的数据保存到本地store
-    store.setTask(response);
+    const existingTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
+    if (existingTaskIndex !== -1) {
+      // 如果任务已存在，更新现有任务
+      store.tasks[existingTaskIndex] = { ...store.tasks[existingTaskIndex], ...response };
+    } else {
+      // 如果任务不存在，创建新任务
+      store.createTask(response.taskId, response.fileName);
+      const newTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
+      if (newTaskIndex !== -1) {
+        store.tasks[newTaskIndex] = { ...store.tasks[newTaskIndex], ...response };
+      }
+    }
     
     // 确保tableLinks存在且为数组
     const tableLinks = response.tableLinks || [];
