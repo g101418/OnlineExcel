@@ -8,6 +8,7 @@
         <h3>表格列表</h3>
         <div class="header-buttons">
           <el-button type="primary" @click="exportAllLinks">一键导出链接</el-button>
+          <el-button :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
           <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
         </div>
       </div>
@@ -87,10 +88,11 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
 import { ref, computed, onMounted } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElLoading } from "element-plus";
 import { Loading } from "@element-plus/icons-vue";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore, saveState } from "../stores/task";
+import * as XLSX from "xlsx";
 // 导入API
 import { getTaskReleaseData, getTaskData, deleteTask, getSubTaskStatuses, getTableData, withdrawTable } from "../api/task";
 
@@ -118,6 +120,11 @@ const loading = ref(false);
 // 计算属性：为表格添加链接和状态（从服务端获取）
 const splitTablesWithLinks = computed(() => {
   return splitTables.value;
+});
+
+// 计算属性：检查是否有已提交的表格
+const hasSubmittedTables = computed(() => {
+  return splitTables.value.some(table => table.status === '已上传');
 });
 
 // 表格数据查看相关变量
@@ -280,6 +287,101 @@ const rejectTable = async (table) => {
   }
 };
 
+// 汇总导出所有已提交的表格数据
+const exportAllTables = async () => {
+  try {
+    // 获取所有已提交的表格
+    const submittedTables = splitTables.value.filter(table => table.status === '已上传');
+    
+    if (submittedTables.length === 0) {
+      ElMessage.warning("没有已提交的表格可以导出");
+      return;
+    }
+    
+    // 显示加载状态
+    const loading = ElLoading.service({
+      lock: true,
+      text: '正在汇总导出数据，请稍候...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
+    
+    // 获取所有已提交表格的数据
+    const allTableData = await Promise.all(
+      submittedTables.map(async table => {
+        try {
+          const response = await getTableData(table.code);
+          return response.table_data;
+        } catch (error) {
+          console.error(`获取表格 ${table.name} 数据失败:`, error);
+          return null;
+        }
+      })
+    );
+    
+    // 过滤掉获取失败的表格数据
+    const validTableData = allTableData.filter(data => data !== null);
+    
+    if (validTableData.length === 0) {
+      ElMessage.error("获取表格数据失败，请稍后重试");
+      loading.close();
+      return;
+    }
+    
+    // 汇总数据：使用当前任务的uploadedHeaders作为表头，其他表格只保留数据行
+    const mergedData = [];
+    
+    // 获取表头（从当前任务的uploadedHeaders）
+    const headers = currentTask.value?.uploadedHeaders || [];
+    
+    // 如果有表头，添加到汇总数据中
+    if (headers.length > 0) {
+      mergedData.push(headers);
+      
+      // 添加所有数据行
+      validTableData.forEach(tableData => {
+        if (tableData && tableData.length > 0) {
+          mergedData.push(...tableData); // 添加所有数据行（因为table_data本身不包含表头）
+        }
+      });
+    } else if (validTableData.length > 0 && validTableData[0].length > 0) {
+      // 如果没有上传的表头，则尝试从第一个有效表格的第一行获取表头
+      mergedData.push(validTableData[0][0]); // 添加表头
+      
+      // 添加所有数据行（包括第一个表格的其他行和后续表格的所有行）
+      validTableData.forEach((tableData, index) => {
+        if (tableData && tableData.length > 0) {
+          if (index === 0) {
+            mergedData.push(...tableData.slice(1)); // 第一个表格跳过表头行
+          } else {
+            mergedData.push(...tableData); // 后续表格添加所有行
+          }
+        }
+      });
+    }
+    
+    // 创建工作表
+    const worksheet = XLSX.utils.aoa_to_sheet(mergedData);
+    
+    // 创建工作簿并添加工作表
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '汇总数据');
+    
+    // 生成文件名
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
+    
+    // 导出Excel文件
+    XLSX.writeFile(workbook, exportFileName);
+    
+    // 关闭加载状态
+    loading.close();
+    
+    ElMessage.success("汇总导出成功");
+  } catch (error) {
+    console.error("汇总导出失败:", error);
+    ElMessage.error("汇总导出失败，请稍后重试");
+  }
+};
+
 // 获取拆分表格数据（从服务端获取）
 const fetchSplitTables = async () => {
   try {
@@ -415,7 +517,7 @@ const fetchSplitTables = async () => {
 
 onMounted(() => {
   // 根据路由query中的taskId设置当前任务
-  console.log("你好啊！！！")
+  
   if (taskId.value) {
     // 设置进度为任务发布页面
     store.setProgress(taskId.value, 'release');
