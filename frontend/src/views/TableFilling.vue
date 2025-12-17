@@ -384,7 +384,7 @@ const fetchTableData = async () => {
         }
         permissions.columns = response.permissions?.columns || []
 
-        ElMessage.success('表格数据加载成功')
+        // ElMessage.success('表格数据加载成功')
     } catch (error) {
         console.error('获取表格数据失败:', error)
         // 所有错误情况下都跳转到错误页面
@@ -634,7 +634,9 @@ const handleRestore = async () => {
         await restoreTable(linkCode.value)
         ElMessage.success('表格数据已成功还原')
         // 直接刷新整个页面，确保所有数据都被重新加载
-        window.location.reload()
+        setTimeout(() => {
+            window.location.reload()
+        }, 700)
     } catch (error) {
         console.error('还原表格数据失败:', error)
         ElMessage.error('表格数据还原失败，请重试')

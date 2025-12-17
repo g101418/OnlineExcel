@@ -59,7 +59,9 @@
       width="80%"
     >
       <div v-if="tableDataLoading" class="dialog-loading">
-        <el-spinner size="large" />
+        <el-icon :size="48" class="loading-icon">
+          <Loading />
+        </el-icon>
         <div>加载中...</div>
       </div>
       <el-table v-else-if="tableData && tableData.table_data && tableData.table_data.length > 0" :data="tableData.table_data" style="width: 100%">
@@ -86,8 +88,9 @@
 import { useRouter, useRoute } from "vue-router";
 import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
+import { Loading } from "@element-plus/icons-vue";
 import TaskInfo from "../components/TaskInfo.vue";
-import { useTaskStore } from "../stores/task";
+import { useTaskStore, saveState } from "../stores/task";
 // 导入API
 import { getTaskReleaseData, getTaskData, deleteTask, getSubTaskStatuses, getTableData, withdrawTable } from "../api/task";
 
@@ -284,7 +287,8 @@ const fetchSplitTables = async () => {
     
     // 检查是否有taskId
     if (!route.query.taskId) {
-      router.push('/error');
+      ElMessage.error("缺少必要的任务ID参数");
+      isTaskValid.value = false;
       return;
     }
     
@@ -292,22 +296,66 @@ const fetchSplitTables = async () => {
     const response = await getTaskReleaseData(route.query.taskId as string);
     
     // 检查响应数据是否有效
-    if (!response || !response.splitData) {
-      router.push('/error');
+    if (!response) {
+      ElMessage.error("获取的数据格式无效");
+      isTaskValid.value = false;
       return;
+    }
+    
+    // 处理未拆分表格的情况：如果splitData为空，使用uploadedData创建一个单元素的splitData数组
+    if (!response.splitData || response.splitData.length === 0) {
+      // 从当前任务获取原始数据和表头
+      const currentTaskData = currentTask.value;
+      if (currentTaskData && currentTaskData.uploadedData && currentTaskData.uploadedHeaders) {
+        response.splitData = [{
+          sheetName: currentTaskData.fileName || '未拆分表格',
+          data: currentTaskData.uploadedData,
+          headers: currentTaskData.uploadedHeaders
+        }];
+      } else {
+        ElMessage.error("获取的数据格式无效");
+        isTaskValid.value = false;
+        return;
+      }
     }
     
     // 将服务端返回的数据保存到本地store
     const existingTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
     if (existingTaskIndex !== -1) {
-      // 如果任务已存在，更新现有任务
-      store.tasks[existingTaskIndex] = { ...store.tasks[existingTaskIndex], ...response };
+      // 如果任务已存在，使用服务端数据完全替换本地任务数据
+      // 只保留本地的权限设置，其他所有数据都从服务端获取
+      const existingTask = store.tasks[existingTaskIndex];
+      const localPermissions = existingTask.permissions;
+      
+      // 使用服务端数据完全覆盖本地任务数据
+      const updatedTask = { 
+        ...response,
+        // 保留本地的权限设置
+        permissions: localPermissions,
+        // 更新时间
+        updateTime: new Date().toLocaleString('zh-CN')
+      };
+      
+      // 直接替换整个任务对象
+      store.tasks[existingTaskIndex] = updatedTask;
+      
+      // 手动保存状态到本地存储
+      saveState(store.$state);
     } else {
       // 如果任务不存在，创建新任务
       store.createTask(response.taskId, response.fileName);
+      
+      // 找到新创建的任务索引
       const newTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
       if (newTaskIndex !== -1) {
-        store.tasks[newTaskIndex] = { ...store.tasks[newTaskIndex], ...response };
+        // 使用服务端数据完全替换新创建的任务
+        store.tasks[newTaskIndex] = { 
+          ...response,
+          updateTime: new Date().toLocaleString('zh-CN') // 更新时间
+        };
+        
+        // 手动保存状态到本地存储
+        saveState(store.$state);
       }
     }
     
@@ -358,8 +406,8 @@ const fetchSplitTables = async () => {
     isTaskValid.value = true;
   } catch (error) {
     console.error("获取拆分表格数据失败:", error);
-    // 请求失败时跳转到error页面
-    router.push('/error');
+    // 直接跳转到error页面，不使用本地数据
+    router.push({ path: "/error", query: { message: "获取服务端数据失败，请稍后重试" } });
   } finally {
     loading.value = false;
   }
@@ -367,6 +415,7 @@ const fetchSplitTables = async () => {
 
 onMounted(() => {
   // 根据路由query中的taskId设置当前任务
+  console.log("你好啊！！！")
   if (taskId.value) {
     // 设置进度为任务发布页面
     store.setProgress(taskId.value, 'release');

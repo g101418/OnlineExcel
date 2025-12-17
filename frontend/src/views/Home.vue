@@ -94,7 +94,7 @@
 
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onActivated, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import SparkMD5 from "spark-md5";
@@ -220,12 +220,18 @@ const formatDataSize = (bytes) => {
 
 // 导航到任务页面
 const navigateToTask = (table) => {
-  // 根据任务自己的progress状态决定跳转目标
+  // 从store中获取最新的任务状态
+  const latestTask = store.getTask(table.taskId);
+  const actualProgress = latestTask ? latestTask.progress : table.progress;
+  
+  // 根据最新的progress状态决定跳转目标
   let targetPath;
-  if (table.progress === 'condition') {
+  if (actualProgress === 'condition') {
     targetPath = '/task-condition';
-  } else if (table.progress === 'release') {
+  } else if (actualProgress === 'release') {
     targetPath = '/task-release';
+  } else if (actualProgress === 'completed') {
+    targetPath = '/task-release'; // 完成的任务也显示在release页面
   } else {
     targetPath = '/task-generation';
   }
@@ -334,6 +340,11 @@ const loadHistoricalData = () => {
 
 // 页面加载时加载历史表格数据
 onMounted(() => {
+  loadHistoricalData();
+});
+
+// 当组件被激活时重新加载历史数据（用于从其他页面返回时更新状态）
+onActivated(() => {
   loadHistoricalData();
 });
 
