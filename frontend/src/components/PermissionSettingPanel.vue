@@ -72,8 +72,8 @@
           </el-select>
 
           <div v-if="col.validation.type === 'number'" class="number-validation">
-            <el-input-number v-model="col.validation.min" :precision="0" placeholder="最小值" />
-            <el-input-number v-model="col.validation.max" :precision="0" placeholder="最大值" />
+            <el-input-number v-model="col.validation.min" placeholder="最小值" />
+            <el-input-number v-model="col.validation.max" placeholder="最大值" />
             <label class="integer-option">
               <el-checkbox v-model="col.validation.isInteger" />
               整数
