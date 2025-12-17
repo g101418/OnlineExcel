@@ -47,8 +47,30 @@
         </div>
         <!-- 操作按钮 -->
         <div class="action-buttons">
-            <el-button @click="handleSaveDraft">暂存</el-button>
-            <el-button type="primary" :disabled="!canSubmit" @click="handleSubmit">提交</el-button>
+            <!-- 暂存按钮：只有在填报中或已退回状态才可用 -->
+            <el-button 
+                @click="handleSaveDraft" 
+                :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned')"
+            >
+                暂存
+            </el-button>
+            
+            <!-- 提交/撤回按钮：根据状态动态切换 -->
+            <el-button 
+                v-if="taskInfo.fillingStatus === 'submitted'" 
+                type="warning" 
+                @click="handleWithdraw"
+            >
+                撤回
+            </el-button>
+            <el-button 
+                v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                type="primary" 
+                :disabled="!canSubmit" 
+                @click="handleSubmit"
+            >
+                提交
+            </el-button>
         </div>
     </div>
 </template>
@@ -66,7 +88,7 @@ import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
 import 'handsontable/dist/handsontable.full.css'
 // API
-import { getTaskFillingData, saveDraft, submitTable } from '../api/task'
+import { getTaskFillingData, saveDraft, submitTable, withdrawTable } from '../api/task'
 
 // ======================
 // Handsontable 初始化
@@ -408,6 +430,9 @@ const handleSubmit = async () => {
         
         await submitTable(linkCode.value, currentData)
         ElMessage.success('表格数据提交成功')
+        
+        // 提交成功后重新获取最新的任务数据，确保状态更新
+        await fetchTableData()
     } catch (error) {
         console.error('提交表格数据失败:', error)
         ElMessage.error('表格数据提交失败，请重试')
@@ -560,6 +585,8 @@ const getDeadlineText = () => {
 const getFillingStatusType = () => {
     if (taskInfo.fillingStatus === 'submitted') {
         return 'success'
+    } else if (taskInfo.fillingStatus === 'returned') {
+        return 'danger'
     } else {
         return 'warning'
     }
@@ -569,8 +596,30 @@ const getFillingStatusType = () => {
 const getFillingStatusText = () => {
     if (taskInfo.fillingStatus === 'submitted') {
         return '已提交'
+    } else if (taskInfo.fillingStatus === 'returned') {
+        return '已退回'
     } else {
         return '填报中'
+    }
+}
+
+// ======================
+// 撤回表格提交
+// ======================
+const handleWithdraw = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        return
+    }
+
+    try {
+        await withdrawTable(linkCode.value)
+        ElMessage.success('表格提交已撤回')
+        // 更新本地状态
+        taskInfo.fillingStatus = 'in_progress'
+    } catch (error) {
+        console.error('撤回表格提交失败:', error)
+        ElMessage.error('表格提交撤回失败，请重试')
     }
 }
 
