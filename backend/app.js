@@ -8,8 +8,8 @@ const PORT = 3000;
 
 // 中间件配置
 app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use(bodyParser.json({ limit: '5mb' }));
+app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 
 // 引入路由
 app.use('/api', taskRoutes);
