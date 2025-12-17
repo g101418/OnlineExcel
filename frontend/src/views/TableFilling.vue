@@ -633,8 +633,8 @@ const handleRestore = async () => {
     try {
         await restoreTable(linkCode.value)
         ElMessage.success('表格数据已成功还原')
-        // 刷新表格数据
-        await fetchTableData()
+        // 直接刷新整个页面，确保所有数据都被重新加载
+        window.location.reload()
     } catch (error) {
         console.error('还原表格数据失败:', error)
         ElMessage.error('表格数据还原失败，请重试')
