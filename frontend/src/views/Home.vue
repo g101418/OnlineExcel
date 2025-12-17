@@ -65,28 +65,28 @@
         <div class="clear-history">
           <el-button size="small" text @click="clearHistory">清除历史任务</el-button>
         </div>
+      </div>
 
-        <!-- 根据任务ID获取任务链接 -->
-        <div class="get-task-link">
-          <h3 class="get-task-link-title">根据任务ID跳转任务页面</h3>
-          <div class="get-task-link-form">
-            <el-input 
-              v-model="taskIdInput" 
-              placeholder="请输入任务ID" 
-              class="task-id-input"
-              :error="inputError"
-            />
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="getTaskByLink"
-              class="jump-btn"
-            >
-              跳转任务页面
-            </el-button>
-          </div>
-          <p v-if="inputError" class="error-message">{{ inputError }}</p>
+      <!-- 根据任务ID获取任务链接 -->
+      <div class="get-task-link">
+        <h3 class="get-task-link-title">根据任务ID跳转任务页面</h3>
+        <div class="get-task-link-form">
+          <el-input 
+            v-model="taskIdInput" 
+            placeholder="请输入任务ID" 
+            class="task-id-input"
+            :error="inputError"
+          />
+          <el-button 
+            type="primary" 
+            size="small" 
+            @click="getTaskByLink"
+            class="jump-btn"
+          >
+            跳转任务页面
+          </el-button>
         </div>
+        <p v-if="inputError" class="error-message">{{ inputError }}</p>
       </div>
     </div>
   </div>
@@ -101,7 +101,7 @@ import SparkMD5 from "spark-md5";
 import logo from "../assets/logo.png";
 import * as XLSX from "xlsx";
 import { useTaskStore, saveState } from "../stores/task";
-import { deleteTask } from "../api/task";
+import { deleteTask, checkIdExists } from "../api/task";
 
 // when a file is selected, we parse it and store the parsed data in pinia store
 
@@ -134,46 +134,32 @@ const getTaskByLink = async () => {
   
   const taskId = taskIdInput.value.trim();
   
-  // 先检查本地是否有该任务
-  const localTask = store.getTask(taskId);
-  if (localTask) {
-    // 如果本地任务状态为release，直接跳转到release页面
-    if (localTask.progress === 'release') {
-      router.push({ path: '/task-release', query: { taskId } });
-      return;
-    } else {
-      // 否则根据任务当前进度跳转
-      let targetPath;
-      if (localTask.progress === 'condition') {
-        targetPath = '/task-condition';
-      } else if (localTask.progress === 'completed') {
-        targetPath = '/task-release'; // 完成的任务也显示在release页面
-      } else {
-        targetPath = '/task-generation';
-      }
-      router.push({ path: targetPath, query: { taskId } });
-      return;
-    }
+  // 检查ID长度
+  if (taskId.length !== 24 && taskId.length !== 28) {
+    inputError.value = 'ID长度必须为24位或28位';
+    return;
   }
   
-  // 本地没有该任务，需要与服务器交互
   try {
-    // TODO: 调用服务器API验证任务ID并获取任务信息
-    // 示例API调用: const serverTask = await getTaskFromServer(taskId);
+    // 调用API检查ID是否存在
+    const result = await checkIdExists(taskId);
     
-    // 模拟服务器返回任务信息
-    const serverTask = { progress: 'release' };
-    
-    // 假设服务器返回任务存在且状态为release
-    if (serverTask && serverTask.progress === 'release') {
-      // TODO: 如果任务在服务器但不在本地，可能需要将任务信息同步到本地存储
+    // 根据API返回结果跳转
+    if (result === 'task') {
+      // 主任务跳转release页面
       router.push({ path: '/task-release', query: { taskId } });
-    } else {
-      inputError.value = '无效的任务ID或任务状态不允许跳转';
+    } else if (result === 'table_filling') {
+      // 子任务跳转tablefilling页面，注意参数名必须是link，与TableFilling组件的linkCode计算属性对应
+      router.push({ path: '/table-filling', query: { link: taskId } });
     }
   } catch (error) {
-    console.error('获取任务信息失败:', error);
-    inputError.value = '获取任务信息失败，请稍后重试';
+    console.error('检查ID是否存在失败:', error);
+    // 处理API错误
+    if (error.response?.data?.error) {
+      inputError.value = error.response.data.error;
+    } else {
+      inputError.value = '不存在该任务ID';
+    }
   }
 };
 

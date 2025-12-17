@@ -188,3 +188,18 @@ export const restoreTable = async (linkCode) => {
     throw error;
   }
 };
+
+/**
+ * 检查ID是否存在
+ * @param {string} id - 任务ID或子任务ID
+ * @returns {Promise<string>} - 返回ID类型（task或table_filling）
+ */
+export const checkIdExists = async (id) => {
+  try {
+    // 注意：API_BASE_URL已经包含了/api前缀，所以这里不需要再加/api
+    return await get(`/check-id-exists/${id}`);
+  } catch (error) {
+    console.error("检查ID是否存在出错:", error);
+    throw error;
+  }
+};

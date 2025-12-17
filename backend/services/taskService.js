@@ -477,7 +477,7 @@ exports.checkIdExists = (id, callback) => {
       // 不存在，返回错误
       callback(new Error("ID not found"));
     });
-  } else if (id.length === 30) {
+  } else if (id.length === 28) {
     // 30位ID，查询子任务表
     const checkFillingTaskSql = `SELECT filling_task_id FROM table_fillings WHERE filling_task_id = ?`;
     db.get(checkFillingTaskSql, [id], (err, fillingTask) => {
