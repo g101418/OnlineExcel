@@ -61,7 +61,7 @@ import { ElMessage } from "element-plus";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore } from "../stores/task";
 // 导入API
-import { getTaskReleaseData, getTaskData } from "../api/task";
+import { getTaskReleaseData, getTaskData, deleteTask } from "../api/task";
 
 const router = useRouter();
 const route = useRoute();
@@ -174,14 +174,9 @@ const exportAllLinks = async () => {
 // 返回条件设置页面（将任务从发布状态撤回至条件设置状态）
 const goToTaskCondition = async () => {
   try {
-    // 调用API获取最新任务数据并更新Pinia store
-    const taskData = await getTaskData(taskId.value);
-    // 更新当前任务的信息
-    store.setUploadedData(taskId.value, taskData.uploadedHeaders, taskData.uploadedData);
-    store.setSplitInfo(taskId.value, taskData.splitEnabled, taskData.selectedHeader);
-    // 更新其他必要的任务信息
-    if (taskData.taskName) store.setTaskName(taskId.value, taskData.taskName);
-    if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
+    // 根据用户要求，task任务只有删除delete，没有撤回
+    // 先调用API删除任务及相关子任务
+    await deleteTask(taskId.value);
     
     // 设置进度为条件设置页面
     store.setProgress(taskId.value, 'condition');
@@ -192,7 +187,7 @@ const goToTaskCondition = async () => {
       query: { taskId: taskId.value }
     });
     
-    ElMessage.success("任务已撤回并返回条件设置页面");
+    ElMessage.success("任务已删除并返回条件设置页面");
   } catch (error) {
     console.error("返回条件设置页面失败:", error);
     ElMessage.error("返回条件设置页面失败，请稍后重试");

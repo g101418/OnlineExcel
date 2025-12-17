@@ -24,90 +24,126 @@ exports.saveTask = (taskData, callback) => {
       return callback(err);
     }
     
-    // 如果已存在，忽略请求
+    // 执行插入或更新操作
+    let sql;
+    let params;
+    
     if (existingTask) {
-      return callback(null, {
-        message: 'Task already exists, request ignored'
-      });
+      // 如果任务已存在，执行更新操作
+      sql = `UPDATE tasks SET 
+        taskName = ?, taskDeadline = ?, fileName = ?, uploadedHeaders = ?, uploadedData = ?, 
+        selectedHeader = ?, split = ?, header = ?, 
+        splitData = ?, permissions = ?, tableLinks = ?, 
+        updateTime = ?, splitEnabled = ?, permissionPanelCollapsed = ?, progress = ? 
+        WHERE taskId = ?`;
+      
+      params = [
+        taskName,
+        taskDeadline,
+        fileName,
+        JSON.stringify(uploadedHeaders),
+        JSON.stringify(uploadedData),
+        selectedHeader,
+        split,
+        header,
+        JSON.stringify(splitData),
+        JSON.stringify(permissions),
+        JSON.stringify(tableLinks),
+        JSON.stringify(taskData.updateTime || new Date().toISOString()),
+        taskData.splitEnabled || false,
+        taskData.permissionPanelCollapsed || false,
+        taskData.progress || 'generation',
+        taskId
+      ];
+    } else {
+      // 如果任务不存在，执行插入操作
+      sql = `INSERT INTO tasks (
+        taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
+        selectedHeader, split, header, 
+        splitData, permissions, tableLinks,
+        updateTime, splitEnabled, permissionPanelCollapsed, progress
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      
+      params = [
+        taskId,
+        taskName,
+        taskDeadline,
+        fileName,
+        JSON.stringify(uploadedHeaders),
+        JSON.stringify(uploadedData),
+        selectedHeader,
+        split,
+        header,
+        JSON.stringify(splitData),
+        JSON.stringify(permissions),
+        JSON.stringify(tableLinks),
+        JSON.stringify(taskData.updateTime || new Date().toISOString()),
+        taskData.splitEnabled || false,
+        taskData.permissionPanelCollapsed || false,
+        taskData.progress || 'generation'
+      ];
     }
     
-    // 如果不存在，执行插入操作
-    const sql = `INSERT INTO tasks (
-      taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
-      selectedHeader, split, header, 
-      splitData, permissions, tableLinks,
-      updateTime, splitEnabled, permissionPanelCollapsed, progress
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    
-    db.run(sql, [
-      taskId,
-      taskName,
-      taskDeadline,
-      fileName,
-      JSON.stringify(uploadedHeaders),
-      JSON.stringify(uploadedData),
-      selectedHeader,
-      split,
-      header,
-      JSON.stringify(splitData),
-      JSON.stringify(permissions),
-      JSON.stringify(tableLinks),
-      JSON.stringify(taskData.updateTime || new Date().toISOString()),
-      taskData.splitEnabled || false,
-      taskData.permissionPanelCollapsed || false,
-      taskData.progress || 'generation'
-    ], function(err) {
+    db.run(sql, params, function(err) {
       if (err) {
         return callback(err);
       }
       
-      // 插入成功后，同步创建表格填报任务
-      const insertFillingTask = (index, callback) => {
-        if (index >= tableLinks.length) {
-          // 所有表格填报任务都创建完成
-          return callback(null);
-        }
-        
-        const tableLink = tableLinks[index];
-        const tableData = splitData[index] || { data: [] };
-        
-        const fillingSql = `INSERT INTO table_fillings (
-          filling_task_id, filling_task_name, original_task_id, 
-          table_name, original_table_data, modified_table_data, filling_status, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
-        
-        db.run(fillingSql, [
-          tableLink.code,
-          tableLink.name,
-          taskId,
-          tableLink.name,
-          JSON.stringify(tableData.data),
-          JSON.stringify(tableData.data),
-          'in_progress'
-        ], function(err) {
-          if (err) {
-            return callback(err);
-          }
-          
-          // 继续创建下一个表格填报任务
-          insertFillingTask(index + 1, callback);
-        });
-      };
-      
-      // 开始创建表格填报任务
-      insertFillingTask(0, (err) => {
+      // 无论插入还是更新，都需要先删除原有子任务，然后创建新的子任务
+      // 先删除与任务相关的表格填报任务
+      const deleteFillingTasksSql = `DELETE FROM table_fillings WHERE original_task_id = ?`;
+      db.run(deleteFillingTasksSql, [taskId], (err) => {
         if (err) {
           return callback(err);
         }
         
-        // 所有操作都成功完成
-        callback(null, {
-          id: this.lastID,
-          taskId,
-          taskName,
-          taskDeadline,
-          fileName,
-          message: 'Task saved successfully'
+        // 然后创建新的表格填报任务
+        const insertFillingTask = (index, callback) => {
+          if (index >= tableLinks.length) {
+            // 所有表格填报任务都创建完成
+            return callback(null);
+          }
+          
+          const tableLink = tableLinks[index];
+          const tableData = splitData[index] || { data: [] };
+          
+          const fillingSql = `INSERT INTO table_fillings (
+            filling_task_id, filling_task_name, original_task_id, 
+            original_table_data, modified_table_data, filling_status, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
+          
+          db.run(fillingSql, [
+            tableLink.code,
+            tableLink.name,
+            taskId,
+            JSON.stringify(tableData.data),
+            JSON.stringify(tableData.data),
+            'in_progress'
+          ], function(err) {
+            if (err) {
+              return callback(err);
+            }
+            
+            // 继续创建下一个表格填报任务
+            insertFillingTask(index + 1, callback);
+          });
+        };
+      
+        // 开始创建表格填报任务
+        insertFillingTask(0, (err) => {
+          if (err) {
+            return callback(err);
+          }
+          
+          // 所有操作都成功完成
+          callback(null, {
+            id: existingTask ? existingTask.id : this.lastID,
+            taskId,
+            taskName,
+            taskDeadline,
+            fileName,
+            message: existingTask ? 'Task updated and filling tasks recreated successfully' : 'Task saved successfully'
+          });
         });
       });
     });
@@ -302,14 +338,6 @@ exports.deleteTask = (taskId, callback) => {
     // 先删除与任务相关的表格填报任务
     const deleteFillingTasksSql = `DELETE FROM table_fillings WHERE original_task_id = ?`;
     db.run(deleteFillingTasksSql, [taskId], (err) => {
-      if (err) {
-        return callback(err);
-      }
-    });
-    
-    // 删除与任务相关的提交数据
-    const deleteSubmissionsSql = `DELETE FROM task_submissions WHERE task_id = (SELECT id FROM tasks WHERE taskId = ?)`;
-    db.run(deleteSubmissionsSql, [taskId], (err) => {
       if (err) {
         return callback(err);
       }

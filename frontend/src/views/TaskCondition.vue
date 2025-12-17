@@ -342,8 +342,8 @@ const saveSettingsAndRelease = async () => {
       // 拆分后的表格数据
       splitData: currentTask.value?.splitData || [],
       
-      // 生成的表格链接（只发送随机编码数组）
-      tableLinks: tableCodes,
+      // 生成的表格链接（发送包含code和name的对象数组，以便后端创建table_fillings记录）
+      tableLinks: tableLinks,
       
       // 权限设置
       permissions: currentTask.value?.permissions || { row: {}, columns: [] },

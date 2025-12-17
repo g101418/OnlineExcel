@@ -62,6 +62,20 @@ export const deleteTask = async (taskId) => {
 };
 
 /**
+ * 撤回任务
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 返回撤回结果
+ */
+export const withdrawTask = async (taskId) => {
+  try {
+    return await post(`/task/push-withdraw-task/${taskId}`);
+  } catch (error) {
+    console.error("撤回任务出错:", error);
+    throw error;
+  }
+};
+
+/**
  * 获取任务拆分后所有表格的填报状态
  * @param {string} taskId - 任务ID
  * @returns {Promise<Object>} - 返回填报状态
