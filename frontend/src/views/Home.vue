@@ -279,10 +279,24 @@ const clearHistory = async () => {
       type: 'warning',
     });
 
-    // TODO: 通知服务端删除任务
-    // 1. 获取所有历史任务的taskId
-    // 2. 调用后端API批量删除任务
-    // 示例API调用: await deleteTasks(historicalTables.value.map(table => table.taskId));
+    // 获取所有历史任务
+    const allTasks = [...store.tasks];
+    
+    // 筛选出状态为release的任务并通知服务端删除
+    for (const task of allTasks) {
+      if (task.progress === 'release') {
+        try {
+          await deleteTask(task.taskId);
+        } catch (error) {
+          console.error(`删除任务${task.taskId}失败:`, error);
+          // 如果任务已删除或不存在，仍继续执行后续逻辑
+          if (!(error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found'))) {
+            // 非404错误需要记录，但继续处理其他任务
+            console.error('非404错误:', error);
+          }
+        }
+      }
+    }
 
     // 清除store中的数据
     store.clearAll();
