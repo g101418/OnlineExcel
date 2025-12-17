@@ -17,8 +17,8 @@
                 </p>
                 <p>
                     <strong>状态：</strong>
-                    <el-tag :type="getDeadlineStatus()" size="small">
-                        {{ getDeadlineText() }}
+                    <el-tag :type="getFillingStatusType()" size="small">
+                        {{ getFillingStatusText() }}
                     </el-tag>
                 </p>
                 <p>
@@ -88,7 +88,8 @@ const hotTableRef = ref<any>(null)
 const taskInfo = reactive({
     taskId: '',
     taskName: '',
-    taskDeadline: ''
+    taskDeadline: '',
+    fillingStatus: ''
 })
 
 // 任务信息配置
@@ -160,6 +161,7 @@ const permissionTooltipContent = computed(() => {
             const permissionsList = []
             
             // 基本权限
+            if (!colPermission.editable) permissionsList.push('不可编辑')
             if (colPermission.editable) permissionsList.push('可编辑')
             if (colPermission.required) permissionsList.push('必填')
             
@@ -214,7 +216,7 @@ const permissionTooltipContent = computed(() => {
                 }
                 
                 // 选项
-                if (validation.options && Array.isArray(validation.options)) {
+                if (validation.options && Array.isArray(validation.options) && validation.options.length > 0) {
                     permissionsList.push(`选项：${validation.options.join(' / ')}`)
                 }
                 
@@ -348,6 +350,7 @@ const fetchTableData = async () => {
         taskInfo.taskId = response.taskId || ''
         taskInfo.taskName = response.taskName || ''
         taskInfo.taskDeadline = response.taskDeadline || ''
+        taskInfo.fillingStatus = response.fillingStatus || ''
         
         // 设置表格数据
         originalHeaders.value = response.headers || []
@@ -551,6 +554,24 @@ const getDeadlineText = () => {
     if (diffDays === 0) return '今天截止'
     if (diffDays === 1) return '明天截止'
     return `剩余${diffDays}天`
+}
+
+// 获取填报状态的标签类型
+const getFillingStatusType = () => {
+    if (taskInfo.fillingStatus === 'submitted') {
+        return 'success'
+    } else {
+        return 'warning'
+    }
+}
+
+// 获取填报状态的文本
+const getFillingStatusText = () => {
+    if (taskInfo.fillingStatus === 'submitted') {
+        return '已提交'
+    } else {
+        return '填报中'
+    }
 }
 
 // ======================
