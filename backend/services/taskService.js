@@ -27,7 +27,6 @@ exports.saveTask = (taskData, callback) => {
     // 如果已存在，忽略请求
     if (existingTask) {
       return callback(null, {
-        taskId,
         message: 'Task already exists, request ignored'
       });
     }
@@ -62,13 +61,54 @@ exports.saveTask = (taskData, callback) => {
         return callback(err);
       }
       
-      callback(null, {
-        id: this.lastID,
-        taskId,
-        taskName,
-        taskDeadline,
-        fileName,
-        message: 'Task saved successfully'
+      // 插入成功后，同步创建表格填报任务
+      const insertFillingTask = (index, callback) => {
+        if (index >= tableLinks.length) {
+          // 所有表格填报任务都创建完成
+          return callback(null);
+        }
+        
+        const tableLink = tableLinks[index];
+        const tableData = splitData[index] || { data: [] };
+        
+        const fillingSql = `INSERT INTO table_fillings (
+          filling_task_id, filling_task_name, original_task_id, 
+          table_name, original_table_data, modified_table_data, filling_status, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
+        
+        db.run(fillingSql, [
+          tableLink.code,
+          tableLink.name,
+          taskId,
+          tableLink.name,
+          JSON.stringify(tableData.data),
+          JSON.stringify(tableData.data),
+          'in_progress'
+        ], function(err) {
+          if (err) {
+            return callback(err);
+          }
+          
+          // 继续创建下一个表格填报任务
+          insertFillingTask(index + 1, callback);
+        });
+      };
+      
+      // 开始创建表格填报任务
+      insertFillingTask(0, (err) => {
+        if (err) {
+          return callback(err);
+        }
+        
+        // 所有操作都成功完成
+        callback(null, {
+          id: this.lastID,
+          taskId,
+          taskName,
+          taskDeadline,
+          fileName,
+          message: 'Task saved successfully'
+        });
       });
     });
   });
@@ -97,32 +137,98 @@ exports.getTaskReleaseData = (taskId, callback) => {
   });
 };
 
-// 提交任务
-exports.submitTask = (taskId, submitter, data, callback) => {
-  // 检查任务是否存在
-  const checkTaskSql = `SELECT id FROM tasks WHERE taskId = ?`;
-  db.get(checkTaskSql, [taskId], (err, task) => {
+// 获取任务完整数据
+exports.getTaskData = (taskId, callback) => {
+  // 复用getTaskReleaseData的实现
+  exports.getTaskReleaseData(taskId, callback);
+};
+
+// 获取表格填报数据
+exports.getTaskFillingData = (linkCode, callback) => {
+  const sql = `SELECT * FROM table_fillings WHERE filling_task_id = ?`;
+  db.get(sql, [linkCode], (err, fillingTask) => {
     if (err) {
       return callback(err);
     }
     
-    if (!task) {
-      return callback(new Error('Task not found'));
+    if (!fillingTask) {
+      return callback(new Error('Filling task not found'));
     }
     
-    // 插入提交数据
-    const submitSql = `INSERT INTO task_submissions (task_id, submitter, data) VALUES (?, ?, ?)`;
-    db.run(submitSql, [task.id, submitter, JSON.stringify(data)], function(err) {
+    // 解析JSON数据
+    fillingTask.original_table_data = JSON.parse(fillingTask.original_table_data);
+    fillingTask.modified_table_data = JSON.parse(fillingTask.modified_table_data);
+    
+    callback(null, fillingTask);
+  });
+};
+
+// 保存表格草稿
+exports.saveDraft = (linkCode, tableData, callback) => {
+  const sql = `UPDATE table_fillings SET modified_table_data = ?, updated_at = CURRENT_TIMESTAMP WHERE filling_task_id = ?`;
+  db.run(sql, [JSON.stringify(tableData), linkCode], function(err) {
+    if (err) {
+      return callback(err);
+    }
+    
+    if (this.changes === 0) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    callback(null, {
+      linkCode,
+      tableData,
+      message: 'Draft saved successfully'
+    });
+  });
+};
+
+// 撤回表格提交
+exports.withdrawTable = (linkCode, callback) => {
+  const sql = `UPDATE table_fillings SET filling_status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE filling_task_id = ?`;
+  db.run(sql, [linkCode], function(err) {
+    if (err) {
+      return callback(err);
+    }
+    
+    if (this.changes === 0) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    callback(null, {
+      linkCode,
+      status: 'in_progress',
+      message: 'Table submission withdrawn successfully'
+    });
+  });
+};
+
+// 提交任务（暂存、提交填报的表格数据）
+exports.submitTask = (linkCode, tableData, status, callback) => {
+  // 检查表格填报任务是否存在
+  const checkFillingTaskSql = `SELECT * FROM table_fillings WHERE filling_task_id = ?`;
+  db.get(checkFillingTaskSql, [linkCode], (err, fillingTask) => {
+    if (err) {
+      return callback(err);
+    }
+    
+    if (!fillingTask) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    // 更新表格填报数据
+    const updateFillingTaskSql = `UPDATE table_fillings SET modified_table_data = ?, filling_status = ?, updated_at = CURRENT_TIMESTAMP WHERE filling_task_id = ?`;
+    db.run(updateFillingTaskSql, [JSON.stringify(tableData), status, linkCode], function(err) {
       if (err) {
         return callback(err);
       }
       
       callback(null, {
         id: this.lastID,
-        taskId,
-        submitter,
-        data,
-        message: 'Submission saved successfully'
+        linkCode,
+        tableData,
+        status,
+        message: status === 'in_progress' ? 'Draft saved successfully' : 'Submission saved successfully'
       });
     });
   });
@@ -185,6 +291,67 @@ exports.withdrawTask = (taskId, callback) => {
       taskId,
       status: 'withdrawn',
       message: 'Task withdrawn successfully'
+    });
+  });
+};
+
+// 删除任务及相关的表格填报任务
+exports.deleteTask = (taskId, callback) => {
+  // 开始事务
+  db.serialize(() => {
+    // 先删除与任务相关的表格填报任务
+    const deleteFillingTasksSql = `DELETE FROM table_fillings WHERE original_task_id = ?`;
+    db.run(deleteFillingTasksSql, [taskId], (err) => {
+      if (err) {
+        return callback(err);
+      }
+    });
+    
+    // 删除与任务相关的提交数据
+    const deleteSubmissionsSql = `DELETE FROM task_submissions WHERE task_id = (SELECT id FROM tasks WHERE taskId = ?)`;
+    db.run(deleteSubmissionsSql, [taskId], (err) => {
+      if (err) {
+        return callback(err);
+      }
+    });
+    
+    // 最后删除任务本身
+    const deleteTaskSql = `DELETE FROM tasks WHERE taskId = ?`;
+    db.run(deleteTaskSql, [taskId], function(err) {
+      if (err) {
+        return callback(err);
+      }
+      
+      if (this.changes === 0) {
+        return callback(new Error('Task not found'));
+      }
+      
+      callback(null, {
+        taskId,
+        message: 'Task and related filling tasks deleted successfully'
+      });
+    });
+  });
+};
+
+// 获取任务某个拆分后表格，填报者填报的表格数据
+exports.getTaskFillingTableData = (linkCode, callback) => {
+  const sql = `SELECT modified_table_data FROM table_fillings WHERE filling_task_id = ?`;
+  db.get(sql, [linkCode], (err, fillingTask) => {
+    if (err) {
+      return callback(err);
+    }
+    
+    if (!fillingTask) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    // 解析JSON数据
+    fillingTask.modified_table_data = JSON.parse(fillingTask.modified_table_data);
+    
+    callback(null, {
+      table_data: fillingTask.modified_table_data,
+      message: 'Table data retrieved successfully'
     });
   });
 };

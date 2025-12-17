@@ -71,9 +71,9 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
     db.run(`CREATE TABLE IF NOT EXISTS table_fillings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       filling_task_id TEXT NOT NULL UNIQUE,
-      task_name TEXT NOT NULL,
+      filling_task_name TEXT NOT NULL,
       original_task_id TEXT NOT NULL,
-      headers JSON NOT NULL DEFAULT '[]',
+      table_name TEXT NOT NULL,
       original_table_data JSON NOT NULL DEFAULT '[]',
       modified_table_data JSON NOT NULL DEFAULT '[]',
       filling_status TEXT DEFAULT 'in_progress',

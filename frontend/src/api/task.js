@@ -4,13 +4,13 @@
 import { post, get } from '../utils/request';
 
 /**
- * 保存任务条件设置
+ * 保存任务条件设置（后端接收前端推送的全量task数据）
  * @param {Object} taskData - 任务数据
  * @returns {Promise<Object>} - 返回保存结果
  */
 export const saveTaskSettings = async (taskData) => {
   try {
-    return await post('/save-task', taskData);
+    return await post('/api/task/push-full-data', taskData);
   } catch (error) {
     console.error("保存任务设置出错:", error);
     throw error;
@@ -18,13 +18,13 @@ export const saveTaskSettings = async (taskData) => {
 };
 
 /**
- * 获取任务发布页面数据
+ * 获取任务发布页面数据（后端发送给前端全量的task数据）
  * @param {string} taskId - 任务ID
  * @returns {Promise<Object>} - 返回任务发布数据
  */
 export const getTaskReleaseData = async (taskId) => {
   try {
-    return await get(`/task/release/${taskId}`);
+    return await get(`/api/task/get-full-data/${taskId}`);
   } catch (error) {
     console.error("获取任务发布数据出错:", error);
     throw error;
@@ -32,73 +32,59 @@ export const getTaskReleaseData = async (taskId) => {
 };
 
 /**
- * 撤回任务
- * @param {string} taskId - 任务ID
- * @returns {Promise<Object>} - 返回撤回结果
- */
-export const withdrawTask = async (taskId) => {
-  try {
-    return await post(`/task/withdraw/${taskId}`);
-  } catch (error) {
-    console.error("撤回任务出错:", error);
-    throw error;
-  }
-};
-
-/**
- * 获取任务完整数据
+ * 获取任务完整数据（后端发送给前端全量的task数据）
  * @param {string} taskId - 任务ID
  * @returns {Promise<Object>} - 返回任务完整数据
  */
 export const getTaskData = async (taskId) => {
   try {
-    return await get(`/task/${taskId}`);
+    return await get(`/api/task/get-full-data/${taskId}`);
   } catch (error) {
     console.error("获取任务数据出错:", error);
     throw error;
   }
 };
 
+
+
 /**
- * 获取表格填报数据
- * @param {string} linkCode - 任务链接码
- * @returns {Promise<Object>} - 返回任务填报数据
+ * 删除任务及相关的表格填报任务
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 返回删除结果
  */
-export const getTaskFillingData = async (linkCode) => {
+export const deleteTask = async (taskId) => {
   try {
-    return await get(`/task/filling/${linkCode}`);
+    return await post(`/api/task/push-delete-task/${taskId}`);
   } catch (error) {
-    console.error("获取表格填报数据出错:", error);
+    console.error("删除任务出错:", error);
     throw error;
   }
 };
 
 /**
- * 保存表格草稿
- * @param {string} linkCode - 任务链接码
- * @param {Array} tableData - 表格数据
- * @returns {Promise<Object>} - 返回保存结果
+ * 获取任务拆分后所有表格的填报状态
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 返回填报状态
  */
-export const saveDraft = async (linkCode, tableData) => {
+export const getFullTableFillingStatus = async (taskId) => {
   try {
-    return await post(`/task/filling/${linkCode}/draft`, { tableData });
+    return await get(`/api/task/get-full-table-filling-status/${taskId}`);
   } catch (error) {
-    console.error("保存表格草稿出错:", error);
+    console.error("获取表格填报状态出错:", error);
     throw error;
   }
 };
 
 /**
- * 提交表格数据
+ * 获取任务某个拆分后表格，填报者填报的表格数据
  * @param {string} linkCode - 任务链接码
- * @param {Array} tableData - 表格数据
- * @returns {Promise<Object>} - 返回提交结果
+ * @returns {Promise<Object>} - 返回表格数据
  */
-export const submitTable = async (linkCode, tableData) => {
+export const getTableData = async (linkCode) => {
   try {
-    return await post(`/task/filling/${linkCode}/submit`, { tableData });
+    return await get(`/api/table-filling/get-table-data/${linkCode}`);
   } catch (error) {
-    console.error("提交表格数据出错:", error);
+    console.error("获取表格数据出错:", error);
     throw error;
   }
 };
@@ -110,9 +96,53 @@ export const submitTable = async (linkCode, tableData) => {
  */
 export const withdrawTable = async (linkCode) => {
   try {
-    return await post(`/task/filling/${linkCode}/withdraw`);
+    return await post(`/api/table-filling/push-withdraw/${linkCode}`);
   } catch (error) {
     console.error("撤回表格提交出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 获取某个拆分后表格的相关信息（用于tablefilling.vue）
+ * @param {string} linkCode - 任务链接码
+ * @returns {Promise<Object>} - 返回表格完整数据
+ */
+export const getTaskFillingData = async (linkCode) => {
+  try {
+    return await get(`/api/table-filling/get-full-data/${linkCode}`);
+  } catch (error) {
+    console.error("获取表格填报数据出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 保存表格草稿（用于暂存填报的表格数据）
+ * @param {string} linkCode - 任务链接码
+ * @param {Array} tableData - 表格数据
+ * @returns {Promise<Object>} - 返回保存结果
+ */
+export const saveDraft = async (linkCode, tableData) => {
+  try {
+    return await post(`/api/table-filling/push-submit-data/${linkCode}`, { tableData, isDraft: true });
+  } catch (error) {
+    console.error("保存表格草稿出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 提交表格数据（用于提交填报的表格数据）
+ * @param {string} linkCode - 任务链接码
+ * @param {Array} tableData - 表格数据
+ * @returns {Promise<Object>} - 返回提交结果
+ */
+export const submitTable = async (linkCode, tableData) => {
+  try {
+    return await post(`/api/table-filling/push-submit-data/${linkCode}`, { tableData, isDraft: false });
+  } catch (error) {
+    console.error("提交表格数据出错:", error);
     throw error;
   }
 };

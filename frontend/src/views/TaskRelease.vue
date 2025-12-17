@@ -61,7 +61,7 @@ import { ElMessage } from "element-plus";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore } from "../stores/task";
 // 导入API
-import { getTaskReleaseData, withdrawTask, getTaskData } from "../api/task";
+import { getTaskReleaseData, getTaskData } from "../api/task";
 
 const router = useRouter();
 const route = useRoute();
@@ -171,12 +171,9 @@ const exportAllLinks = async () => {
   }
 };
 
-// 返回条件设置页面（撤回任务）
+// 返回条件设置页面（将任务从发布状态撤回至条件设置状态）
 const goToTaskCondition = async () => {
   try {
-    // 调用API撤回任务
-    await withdrawTask(taskId.value);
-    
     // 调用API获取最新任务数据并更新Pinia store
     const taskData = await getTaskData(taskId.value);
     // 更新当前任务的信息
@@ -197,8 +194,8 @@ const goToTaskCondition = async () => {
     
     ElMessage.success("任务已撤回并返回条件设置页面");
   } catch (error) {
-    console.error("撤回任务失败:", error);
-    ElMessage.error("撤回任务失败，请稍后重试");
+    console.error("返回条件设置页面失败:", error);
+    ElMessage.error("返回条件设置页面失败，请稍后重试");
   }
 };
 
