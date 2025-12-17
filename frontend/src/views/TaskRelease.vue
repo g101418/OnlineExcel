@@ -78,13 +78,7 @@ const header = computed(() => currentTask.value?.header || '');
 const splitData = computed(() => currentTask.value?.splitData || []);
 
 // 任务有效性检查
-const isTaskValid = computed(() => {
-  if (!route.query.taskId) return false;
-  
-  // 检查本地store中是否存在该taskId的任务
-  const taskExists = store.tasks.some(task => task.taskId === route.query.taskId);
-  return taskExists;
-});
+const isTaskValid = ref(true);
 
 // 拆分表格相关数据
 const splitTables = ref([]);
@@ -137,8 +131,8 @@ const copyLink = async (code) => {
 // 一键导出所有链接
 const exportAllLinks = async () => {
   const linksText = splitTablesWithLinks.value.map(table => {
-    const fullLink = `${window.location.origin}/process-table?link=${table.code}`;
-    return `${table.name}\t${fullLink}`;
+    const fullLink = `${window.location.origin}/table-filling?link=${table.code}`;
+    return `${table.name}	${fullLink}`;
   }).join("\n");
   
   try {
@@ -190,7 +184,22 @@ const goToTaskCondition = async () => {
     ElMessage.success("任务已删除并返回条件设置页面");
   } catch (error) {
     console.error("返回条件设置页面失败:", error);
-    ElMessage.error("返回条件设置页面失败，请稍后重试");
+    
+    // 检查错误信息，如果任务已删除或不存在，仍允许跳转
+    if (error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found')) {
+      // 设置进度为条件设置页面
+      store.setProgress(taskId.value, 'condition');
+      
+      // 导航到条件设置页面
+      router.push({
+        path: "/task-condition",
+        query: { taskId: taskId.value }
+      });
+      
+      ElMessage.success("任务已删除并返回条件设置页面");
+    } else {
+      ElMessage.error("返回条件设置页面失败，请稍后重试");
+    }
   }
 };
 
@@ -216,44 +225,48 @@ const fetchSplitTables = async () => {
   try {
     loading.value = true;
     
-    // 只有当任务有效时才调用API
-    if (!isTaskValid.value) {
-      splitTables.value = [];
+    // 检查是否有taskId
+    if (!route.query.taskId) {
+      router.push('/error');
       return;
     }
     
     // 调用API从服务端获取数据，使用query中的taskId
     const response = await getTaskReleaseData(route.query.taskId as string);
     
-    // 转换后端返回的数据结构为前端需要的格式
-    if (response && response.splitData) {
-      // 确保tableLinks存在且为数组
-      const tableLinks = response.tableLinks || [];
-      
-      // 转换splitData为前端需要的表格格式
-      splitTables.value = response.splitData.map((table, index) => {
-        // 获取对应索引的链接码，如果没有则使用空字符串
-        const linkCode = tableLinks[index]?.code || '';
-        
-        return {
-          id: index + 1,
-          name: table.sheetName || `表格${index + 1}`,
-          rowCount: table.data ? table.data.length : 0,
-          code: linkCode,
-          status: '未上传',
-          originalData: table
-        };
-      });
-    } else {
-      splitTables.value = [];
+    // 检查响应数据是否有效
+    if (!response || !response.splitData) {
+      router.push('/error');
+      return;
     }
+    
+    // 将服务端返回的数据保存到本地store
+    store.setTask(response);
+    
+    // 确保tableLinks存在且为数组
+    const tableLinks = response.tableLinks || [];
+    
+    // 转换splitData为前端需要的表格格式
+    splitTables.value = response.splitData.map((table, index) => {
+      // 获取对应索引的链接码，如果没有则使用空字符串
+      const linkCode = tableLinks[index]?.code || '';
+      
+      return {
+        id: index + 1,
+        name: table.sheetName || `表格${index + 1}`,
+        rowCount: table.data ? table.data.length : 0,
+        code: linkCode,
+        status: '未上传',
+        originalData: table
+      };
+    });
+    
+    // 标记任务为有效
+    isTaskValid.value = true;
   } catch (error) {
     console.error("获取拆分表格数据失败:", error);
-    splitTables.value = []; // 出错时设为空数组
-    // 只有当任务有效时才显示错误信息
-    if (isTaskValid.value) {
-      ElMessage.error("获取表格数据失败，请稍后重试");
-    }
+    // 请求失败时跳转到error页面
+    router.push('/error');
   } finally {
     loading.value = false;
   }

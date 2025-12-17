@@ -101,6 +101,7 @@ import SparkMD5 from "spark-md5";
 import logo from "../assets/logo.png";
 import * as XLSX from "xlsx";
 import { useTaskStore, saveState } from "../stores/task";
+import { deleteTask } from "../api/task";
 
 // when a file is selected, we parse it and store the parsed data in pinia store
 
@@ -249,9 +250,16 @@ const deleteHistoricalTask = async (taskId) => {
     if (task) {
       // 如果任务处在release环节，需要给服务端发消息
       if (task.progress === 'release') {
-        // TODO: 通知服务端删除任务
-        // 示例API调用: await deleteTask(taskId);
-        console.log(`任务${taskId}处于release环节，需要通知服务端删除`);
+        // 通知服务端删除任务
+        try {
+          await deleteTask(taskId);
+        } catch (error) {
+          console.error(`删除任务${taskId}失败:`, error);
+          // 如果任务已删除或不存在，仍继续执行后续逻辑
+          if (!(error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found'))) {
+            throw error;
+          }
+        }
       }
 
       // 从store中删除任务

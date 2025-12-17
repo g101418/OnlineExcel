@@ -370,13 +370,11 @@ exports.deleteTask = (taskId, callback) => {
         return callback(err);
       }
       
-      if (this.changes === 0) {
-        return callback(new Error('Task not found'));
-      }
-      
       callback(null, {
         taskId,
-        message: 'Task and related filling tasks deleted successfully'
+        message: this.changes > 0 
+          ? 'Task and related filling tasks deleted successfully' 
+          : 'Task already deleted'
       });
     });
   });
