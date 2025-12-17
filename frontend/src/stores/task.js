@@ -113,6 +113,7 @@ createTask(taskId, fileName) {
       fileName,
       taskName: '',
       taskDeadline: null,
+      formDescription: '',
       updateTime: now,
       
       // 上传的数据
@@ -290,6 +291,16 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.taskDeadline = taskDeadline
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 设置填表说明
+    setFormDescription(taskId, formDescription) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.formDescription = formDescription
         // 保存状态到本地存储
         saveState(this.$state)
       }

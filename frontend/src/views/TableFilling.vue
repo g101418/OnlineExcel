@@ -17,9 +17,31 @@
                 </p>
                 <p>
                     <strong>状态：</strong>
-                    <el-tag :type="getDeadlineStatus()" size="small">
-                        {{ getDeadlineText() }}
+                    <el-tag :type="getFillingStatusType()" size="small">
+                        {{ getFillingStatusText() }}
                     </el-tag>
+                </p>
+                <p>
+                    <strong>填表说明：</strong>
+                    <el-tooltip placement="top" effect="light">
+                        <template #content>
+                            <div style="white-space: pre-wrap;">{{ taskInfo.formDescription || '暂无填表说明' }}</div>
+                        </template>
+                        <el-icon class="permission-icon">
+                            <InfoFilled />
+                        </el-icon>
+                    </el-tooltip>
+                </p>
+                <p>
+                    <strong>权限说明：</strong>
+                    <el-tooltip placement="top" effect="light">
+                        <template #content>
+                            <div v-html="permissionTooltipContent"></div>
+                        </template>
+                        <el-icon class="permission-icon">
+                            <InfoFilled />
+                        </el-icon>
+                    </el-tooltip>
                 </p>
             </div>
             <el-divider v-if="showDivider" />
@@ -38,22 +60,44 @@
         </div>
         <!-- 操作按钮 -->
         <div class="action-buttons">
-            <el-button>暂存</el-button>
-            <el-button type="primary" :disabled="!canSubmit">提交</el-button>
+            <!-- 暂存按钮：只有在填报中或已退回状态才显示 -->
+            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                @click="handleSaveDraft">
+                暂存
+            </el-button>
+
+            <!-- 还原按钮：只有在填报中或已退回状态才可用，与暂存按钮显示逻辑一致 -->
+            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                @click="handleRestore">
+                还原表格
+            </el-button>
+
+            <!-- 提交/撤回按钮：根据状态动态切换 -->
+            <el-button v-if="taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
+                撤回
+            </el-button>
+            <el-button v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                type="primary" :disabled="!canSubmit" @click="handleSubmit">
+                提交
+            </el-button>
         </div>
     </div>
 </template>
 
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 // ElementPlus
 import { ElMessage, ElTooltip, ElDivider } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 // Handsontable
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
 import 'handsontable/dist/handsontable.full.css'
+// API
+import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable } from '../api/task'
 
 // ======================
 // Handsontable 初始化
@@ -62,13 +106,22 @@ registerAllModules()
 registerLanguageDictionary(zhCN)
 
 // ======================
+// 路由获取linkCode
+// ======================
+const route = useRoute()
+const router = useRouter()
+const linkCode = computed(() => route.query.link as string || '')
+
+// ======================
 // 基础状态
 // ======================
 const hotTableRef = ref<any>(null)
 const taskInfo = reactive({
-    taskId: '12345678',
-    taskName: '销售数据填报任务',
-    taskDeadline: '2025-12-31T23:59:59'
+    taskId: '',
+    taskName: '',
+    taskDeadline: '',
+    fillingStatus: '',
+    formDescription: ''
 })
 
 // 任务信息配置
@@ -109,48 +162,128 @@ const copyTaskId = async (textToCopy: string) => {
 }
 
 // 表头
-const originalHeaders = ref<string[]>([
-    '产品名称',
-    '销售数量',
-    '销售金额',
-    '销售日期',
-    '客户类型',
-    '区域',
-    '业务员手机号',
-    '备注'
-])
-
+const originalHeaders = ref<string[]>([])
 // 表格数据
-const tableData = ref<any[][]>([
-    ['产品A', 100, 5000, '2025-12-01', '企业', '华东', '13800138000', ''],
-    ['产品B', 200, 8000, '2025-12-02', '个人', '华北', '13900139000', '重点客户'],
-    ['产品C', 50, 3000, '2025-12-03', '企业', '华南', '13700137000', ''],
-    ['产品D', 20, 1200, '2025-12-04', '个人', '西南', '13600136000', '试用'],
-    ['产品E', 500, 25000, '2025-12-05', '企业', '东北', '13500135000', '年度合同'],
-    ['产品F', 10, 800, '2025-12-06', '个人', '西北', '13400134000', ''],
-    ['产品G', 999, 99999, '2025-12-07', '企业', '华中', '13300133000', '超额']
-])
-
-// ======================
+const tableData = ref<any[][]>([])
 // 权限与校验规则
-// ======================
-const permissions = {
+const permissions = reactive({
     row: {
-        addable: true,
-        deletable: true,
-        sortable: true
+        addable: false,
+        deletable: false,
+        sortable: false
     },
-    columns: [
-        { label: '产品名称', editable: false, required: true },
-        { label: '销售数量', editable: true, required: true, validation: { type: 'number', min: 1, max: 1000, isInteger: true } },
-        { label: '销售金额', editable: true, validation: { type: 'number', min: 0, max: 100000 } },
-        { label: '销售日期', editable: true, validation: { type: 'date', min: '2025-12-01', max: '2025-12-31' } },
-        { label: '客户类型', editable: true, required: true, validation: { options: ['企业', '个人'] } },
-        { label: '区域', editable: true, validation: { regex: '^(华东|华南|华北|华中|东北|西北|西南)$', regexName: '大区名称' } },
-        { label: '业务员手机号', editable: true, validation: { regex: '^1[3-9]\\d{9}$', regexName: '手机号' } },
-        { label: '备注', editable: true, validation: { maxLength: 20 } }
-    ]
-}
+    columns: []
+})
+
+// 权限提示内容
+const permissionTooltipContent = computed(() => {
+    let content = '<div style="max-width: 400px;">'
+    content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">列权限设置：</h4>'
+    content += '<ul style="margin: 0; padding-left: 20px;">'
+
+    // 如果originalHeaders或permissions.columns为空，显示相应提示
+    if (originalHeaders.value.length === 0) {
+        content += '<li>暂无列权限信息</li>'
+    } else {
+        originalHeaders.value.forEach((header, index) => {
+            const colPermission = permissions.columns[index] || {}
+            content += `<li><strong>${header}：</strong>`
+
+            // 显示列权限信息
+            const permissionsList = []
+
+            // 基本权限
+            if (!colPermission.editable) permissionsList.push('不可编辑')
+            if (colPermission.editable) permissionsList.push('可编辑')
+            if (colPermission.required) permissionsList.push('必填')
+
+            // 验证规则
+            const validation = colPermission.validation
+            if (validation) {
+                // 类型转换
+                let typeText = ''
+                switch (validation.type) {
+                    case 'text': typeText = '文本'; break
+                    case 'number': typeText = validation.isInteger ? '整数' : '数字'; break
+                    case 'date': typeText = '日期'; break
+                    case 'options': typeText = '选项'; break
+                    case 'regex':
+                        if (validation.regexName === '手机号') {
+                            typeText = '手机号'
+                        } else if (validation.regexName) {
+                            typeText = validation.regexName
+                        } else {
+                            typeText = '规定样式'
+                        }
+                        break
+                    default: typeText = validation.type
+                }
+
+                if (typeText) permissionsList.push(`类型：${typeText}`)
+
+                // 范围限制
+                if (validation.min !== null && validation.max !== null) {
+                    if (validation.type === 'date') {
+                        permissionsList.push(`日期范围：${validation.min.split('T')[0]} 至 ${validation.max.split('T')[0]}`)
+                    } else {
+                        permissionsList.push(`数值范围：${validation.min} 至 ${validation.max}`)
+                    }
+                } else if (validation.min !== null) {
+                    if (validation.type === 'date') {
+                        permissionsList.push(`日期最小值：${validation.min.split('T')[0]}`)
+                    } else {
+                        permissionsList.push(`最小值：${validation.min}`)
+                    }
+                } else if (validation.max !== null) {
+                    if (validation.type === 'date') {
+                        permissionsList.push(`日期最大值：${validation.max.split('T')[0]}`)
+                    } else {
+                        permissionsList.push(`最大值：${validation.max}`)
+                    }
+                }
+
+                // 最大长度
+                if (validation.maxLength) {
+                    permissionsList.push(`最大长度：${validation.maxLength}`)
+                }
+
+                // 选项
+                if (validation.options && Array.isArray(validation.options) && validation.options.length > 0) {
+                    permissionsList.push(`选项：${validation.options.join(' / ')}`)
+                }
+
+                // 日期格式
+                if (validation.format && validation.type === 'date') {
+                    permissionsList.push(`日期格式：${validation.format}`)
+                }
+            }
+
+            if (permissionsList.length > 0) {
+                content += permissionsList.join('，')
+            } else {
+                content += '仅可读'
+            }
+
+            content += '</li>'
+        })
+    }
+
+    content += '</ul>'
+
+    // 显示行权限信息
+    content += '<h4 style="margin-top: 12px; margin-bottom: 8px; font-size: 14px;">行权限设置：</h4>'
+    content += '<ul style="margin: 0; padding-left: 20px;">'
+    if (permissions.row.addable) content += '<li>可添加行</li>'
+    if (permissions.row.deletable) content += '<li>可删除行</li>'
+    if (permissions.row.sortable) content += '<li>可调整行顺序</li>'
+    if (!permissions.row.addable && !permissions.row.deletable && !permissions.row.sortable) {
+        content += '<li>行不可编辑</li>'
+    }
+    content += '</ul>'
+
+    content += '</div>'
+    return content
+})
 
 // ======================
 // 校验状态
@@ -163,32 +296,160 @@ const validationErrorCount = computed(() => Object.keys(errors.value).length)
 // ======================
 function getValidationError(value: any, perm: any): string | null {
     if (!perm) return null
-    const v = value == null ? '' : String(value).trim()
+    let v = value == null ? '' : String(value).trim()
     const { required, validation = {} } = perm
     const { type, min, max, isInteger, options, regex, maxLength } = validation
 
     if (required && v === '') return '该字段为必填项'
     if (v == null || v === '') return null // 非必填且为空，跳过后续校验
 
-    if (maxLength && v.length > maxLength) return `最多允许 ${maxLength} 个字符`
+    if (type === 'text' && maxLength && v.length > maxLength) return `最多允许 ${maxLength} 个字符`
 
-    if (type === 'number') {
+    else if (type === 'number') {
         const num = Number(v)
         if (isNaN(num)) return '必须为数字'
         if (isInteger && !Number.isInteger(num)) return '必须为整数'
         if (min != null && num < min) return `不能小于 ${min}`
         if (max != null && num > max) return `不能大于 ${max}`
     }
-    if (type === 'date') {
+    else if (type === 'date') {
+        const { format } = validation
+
+        // 如果指定了格式，先验证格式
+        if (format) {
+            let regex: RegExp
+            switch (format.toLowerCase()) {
+                case 'yyyy-mm-dd':
+                    regex = /^\d{4}-\d{2}-\d{2}$/
+                    break
+                case 'yyyy/mm/dd':
+                    regex = /^\d{4}\/\d{2}\/\d{2}$/
+                    break
+                case 'yyyy.mm.dd':
+                    regex = /^\d{4}\.\d{2}\.\d{2}$/
+                    break
+                case 'yyyy年mm月dd日':
+                    regex = /^\d{4}年\d{2}月\d{2}日$/
+                    break
+                default:
+                    return '不支持的日期格式'
+            }
+
+            if (!regex.test(v)) return `日期格式必须为 ${format}`
+        }
+
+        if (format === 'yyyy年mm月dd日') {
+            const match = v.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+            const [, year, month, day] = match;
+            // 拼接为YYYY-MM-DD（月份补零，确保两位）
+            v = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        
+        // 然后验证日期有效性和范围
         const d = new Date(v)
+
+        
+
         if (isNaN(d.getTime())) return '日期格式不正确'
-        if (min && d < new Date(min)) return `不能早于 ${min}`
-        if (max && d > new Date(max)) return `不能晚于 ${max}`
+        if (min && d < new Date(min)) { return `不能早于 ${new Date(min).toLocaleDateString()}`; }
+        if (max && d > new Date(max)) return `不能晚于 ${new Date(max).toLocaleDateString()}`
     }
-    if (options && !options.includes(v)) return `只能填写：${options.join(' / ')}`
-    if (regex && !new RegExp(regex).test(v)) return '格式不正确'
+    else if (type === 'options' && options && !options.includes(v)) { return `只能填写：${options.join(' / ')}` }
+    else if (type === 'regex' && regex && !new RegExp(regex).test(v)) { return '格式不正确' }
 
     return null
+}
+
+// ======================
+// 获取表格数据
+// ======================
+const fetchTableData = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        // 缺少必要参数时跳转到错误页面
+        router.push('/error')
+        return
+    }
+
+    try {
+        const response = await getTaskFillingData(linkCode.value)
+
+        // 如果响应为空或缺少必要数据，跳转到错误页面
+        if (!response || !response.headers || !response.tableData) {
+            router.push('/error')
+            return
+        }
+
+        // 设置任务信息
+        taskInfo.taskId = response.taskId || ''
+        taskInfo.taskName = response.taskName || ''
+        taskInfo.taskDeadline = response.taskDeadline || ''
+        taskInfo.fillingStatus = response.fillingStatus || ''
+        taskInfo.formDescription = response.formDescription || ''
+
+        // 设置表格数据
+        originalHeaders.value = response.headers || []
+        tableData.value = response.tableData || []
+
+        // 设置权限与校验规则
+        permissions.row = response.permissions?.row || {
+            addable: false,
+            deletable: false,
+            sortable: false
+        }
+        permissions.columns = response.permissions?.columns || []
+
+        // ElMessage.success('表格数据加载成功')
+    } catch (error) {
+        console.error('获取表格数据失败:', error)
+        // 所有错误情况下都跳转到错误页面
+        router.push('/error')
+    }
+}
+
+// ======================
+// 暂存表格数据
+// ======================
+const handleSaveDraft = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        return
+    }
+
+    try {
+        const hot = hotTableRef.value.hotInstance
+        const currentData = hot.getData()
+
+        await saveDraft(linkCode.value, currentData)
+        ElMessage.success('表格数据暂存成功')
+    } catch (error) {
+        console.error('暂存表格数据失败:', error)
+        ElMessage.error('表格数据暂存失败，请重试')
+    }
+}
+
+// ======================
+// 提交表格数据
+// ======================
+const handleSubmit = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        return
+    }
+
+    try {
+        const hot = hotTableRef.value.hotInstance
+        const currentData = hot.getData()
+
+        await submitTable(linkCode.value, currentData)
+        ElMessage.success('表格数据提交成功')
+
+        // 提交成功后重新获取最新的任务数据，确保状态更新
+        await fetchTableData()
+    } catch (error) {
+        console.error('提交表格数据失败:', error)
+        ElMessage.error('表格数据提交失败，请重试')
+    }
 }
 
 // ======================
@@ -208,22 +469,22 @@ const hotSettings = computed(() => ({
         TH.removeAttribute('title');
         if (TH.__tooltipInstance) delete TH.__tooltipInstance;
     },
-    minRows: 0,
+    minRows: tableData.value.length > 0 ? tableData.value.length : 1,
     rowHeights: 36,
     autoWrapRow: true,
     autoWrapCol: true,
     className: 'htCenter',
-    columns: originalHeaders.value.map((_, colIndex) => {
+    columns: originalHeaders.value.length > 0 ? originalHeaders.value.map((_, colIndex) => {
         const perm = permissions.columns[colIndex]
         return {
             data: colIndex,
-            readOnly: !perm.editable,
+            readOnly: !perm?.editable,
             validator: function (value: any, callback: Function) {
                 const error = getValidationError(value, perm);
                 callback(error === null);
             }
         }
-    }),
+    }) : [],
     comments: true,
     copyPaste: true,
     manualRowMove: permissions.row.sortable,
@@ -263,26 +524,22 @@ const hotSettings = computed(() => ({
             errors.value = { ...errors.value, [key]: error };
         }
     },
-    // ==========================================
     // 核心修复点：afterCreateRow
-    // ==========================================
     afterCreateRow: function (index: number, amount: number) {
-        // 1. 计算默认值
-        const defaultProductName = tableData.value.length > 0 && tableData.value[0][0] ? tableData.value[0][0] : '默认产品';
-
-        // 2. 填充数据 (setDataAtCell 本身会触发一次校验，但此时UI可能尚未准备好)
+        // 1. 填充禁止修改列的默认值（使用第一行对应列的值）
         for (let i = 0; i < amount; i++) {
-            this.setDataAtCell(index + i, 0, defaultProductName);
+            permissions.columns.forEach((perm, colIndex) => {
+                // 对于禁止修改的列，使用第一行对应列的值作为默认值
+                if (!perm?.editable && tableData.value.length > 0) {
+                    const defaultValue = tableData.value[0][colIndex];
+                    this.setDataAtCell(index + i, colIndex, defaultValue);
+                }
+            });
         }
 
-        // 3. 【修复】使用 setTimeout 将“全表校验”推迟到当前执行栈之后
+        // 2. 使用 setTimeout 将“全表校验”推迟到当前执行栈之后
         // 这确保了数据已经完全写入，且 Handsontable 内部状态已更新
         setTimeout(() => {
-            // 可选：如果希望重置所有错误，可以在这里重置。
-            // 但更好的做法是只依靠 validateCells 来更新状态，避免瞬间闪烁。
-            // errors.value = {}; 
-
-            // 强制刷新校验状态
             this.validateCells();
         }, 10);
     },
@@ -301,9 +558,112 @@ const hotSettings = computed(() => ({
 // 业务辅助
 // ======================
 const canSubmit = computed(() => validationErrorCount.value === 0)
-const formatDate = (d: string) => new Date(d).toLocaleString()
-const getDeadlineStatus = () => 'success'
-const getDeadlineText = () => '进行中'
+
+const formatDate = (d: string) => {
+    if (!d) return ''
+    return new Date(d).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    })
+}
+
+const getDeadlineStatus = () => {
+    if (!taskInfo.taskDeadline) return 'success'
+    const now = new Date()
+    const deadline = new Date(taskInfo.taskDeadline)
+    const diffDays = (deadline.getTime() - now.getTime()) / (1000 * 3600 * 24)
+
+    if (diffDays < 0) return 'danger' // 已过期
+    if (diffDays < 3) return 'warning' // 即将过期
+    return 'success' // 正常
+}
+
+const getDeadlineText = () => {
+    if (!taskInfo.taskDeadline) return '进行中'
+    const now = new Date()
+    const deadline = new Date(taskInfo.taskDeadline)
+
+    if (now > deadline) return '已过期'
+    const diffDays = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 3600 * 24))
+
+    if (diffDays === 0) return '今天截止'
+    if (diffDays === 1) return '明天截止'
+    return `剩余${diffDays}天`
+}
+
+// 获取填报状态的标签类型
+const getFillingStatusType = () => {
+    if (taskInfo.fillingStatus === 'submitted') {
+        return 'success'
+    } else if (taskInfo.fillingStatus === 'returned') {
+        return 'danger'
+    } else {
+        return 'warning'
+    }
+}
+
+// 获取填报状态的文本
+const getFillingStatusText = () => {
+    if (taskInfo.fillingStatus === 'submitted') {
+        return '已提交'
+    } else if (taskInfo.fillingStatus === 'returned') {
+        return '已退回'
+    } else {
+        return '填报中'
+    }
+}
+
+// ======================
+// 撤回表格提交
+// ======================
+const handleWithdraw = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        return
+    }
+
+    try {
+        await withdrawTable(linkCode.value)
+        ElMessage.success('表格提交已撤回')
+        // 更新本地状态
+        taskInfo.fillingStatus = 'in_progress'
+    } catch (error) {
+        console.error('撤回表格提交失败:', error)
+        ElMessage.error('表格提交撤回失败，请重试')
+    }
+}
+
+// ======================
+// 还原表格数据
+// ======================
+const handleRestore = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        return
+    }
+
+    try {
+        await restoreTable(linkCode.value)
+        ElMessage.success('表格数据已成功还原')
+        // 直接刷新整个页面，确保所有数据都被重新加载
+        setTimeout(() => {
+            window.location.reload()
+        }, 700)
+    } catch (error) {
+        console.error('还原表格数据失败:', error)
+        ElMessage.error('表格数据还原失败，请重试')
+    }
+}
+
+// ======================
+// 初始化
+// ======================
+onMounted(() => {
+    fetchTableData()
+})
 </script>
 
 
@@ -320,26 +680,38 @@ const getDeadlineText = () => '进行中'
 
 .task-info-section {
     margin-bottom: 24px;
+
     .task-title {
         margin-bottom: 16px;
         font-size: 20px;
         font-weight: 600;
         color: #333;
     }
+
     .meta {
         display: flex;
         flex-wrap: wrap;
         gap: 24px;
         margin-bottom: 16px;
+
         p {
             margin: 0;
             font-size: 14px;
+
             .copy-clickable {
                 cursor: pointer;
                 color: #409eff;
+
                 &:hover {
                     text-decoration: underline;
                 }
+            }
+
+            .permission-icon {
+                cursor: pointer;
+                color: #409eff;
+                margin-left: 4px;
+                font-size: 16px;
             }
         }
     }

@@ -41,13 +41,17 @@ export const request = async (url, options = {}) => {
     // 发送请求
     const response = await fetch(fullUrl, mergedOptions);
     
+    // 解析响应数据
+    const data = await response.json();
+    
     // 检查请求是否成功
     if (!response.ok) {
-      throw new Error(`请求失败: ${response.status}`);
+      const error = new Error(`请求失败: ${response.status}`);
+      error.response = { status: response.status, data };
+      throw error;
     }
     
-    // 解析响应数据
-    return await response.json();
+    return data;
   } catch (error) {
     console.error('请求出错:', error);
     throw error;

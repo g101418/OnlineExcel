@@ -65,28 +65,28 @@
         <div class="clear-history">
           <el-button size="small" text @click="clearHistory">清除历史任务</el-button>
         </div>
+      </div>
 
-        <!-- 根据任务ID获取任务链接 -->
-        <div class="get-task-link">
-          <h3 class="get-task-link-title">根据任务ID跳转任务页面</h3>
-          <div class="get-task-link-form">
-            <el-input 
-              v-model="taskIdInput" 
-              placeholder="请输入任务ID" 
-              class="task-id-input"
-              :error="inputError"
-            />
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="getTaskByLink"
-              class="jump-btn"
-            >
-              跳转任务页面
-            </el-button>
-          </div>
-          <p v-if="inputError" class="error-message">{{ inputError }}</p>
+      <!-- 根据任务ID获取任务链接 -->
+      <div class="get-task-link">
+        <h3 class="get-task-link-title">根据任务ID跳转任务页面</h3>
+        <div class="get-task-link-form">
+          <el-input 
+            v-model="taskIdInput" 
+            placeholder="请输入任务ID" 
+            class="task-id-input"
+            :error="inputError"
+          />
+          <el-button 
+            type="primary" 
+            size="small" 
+            @click="getTaskByLink"
+            class="jump-btn"
+          >
+            跳转任务页面
+          </el-button>
         </div>
+        <p v-if="inputError" class="error-message">{{ inputError }}</p>
       </div>
     </div>
   </div>
@@ -94,13 +94,14 @@
 
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, onActivated, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import SparkMD5 from "spark-md5";
 import logo from "../assets/logo.png";
 import * as XLSX from "xlsx";
 import { useTaskStore, saveState } from "../stores/task";
+import { deleteTask, checkIdExists } from "../api/task";
 
 // when a file is selected, we parse it and store the parsed data in pinia store
 
@@ -133,46 +134,32 @@ const getTaskByLink = async () => {
   
   const taskId = taskIdInput.value.trim();
   
-  // 先检查本地是否有该任务
-  const localTask = store.getTask(taskId);
-  if (localTask) {
-    // 如果本地任务状态为release，直接跳转到release页面
-    if (localTask.progress === 'release') {
-      router.push({ path: '/task-release', query: { taskId } });
-      return;
-    } else {
-      // 否则根据任务当前进度跳转
-      let targetPath;
-      if (localTask.progress === 'condition') {
-        targetPath = '/task-condition';
-      } else if (localTask.progress === 'completed') {
-        targetPath = '/task-release'; // 完成的任务也显示在release页面
-      } else {
-        targetPath = '/task-generation';
-      }
-      router.push({ path: targetPath, query: { taskId } });
-      return;
-    }
+  // 检查ID长度
+  if (taskId.length !== 24 && taskId.length !== 28) {
+    inputError.value = 'ID长度必须为24位或28位';
+    return;
   }
   
-  // 本地没有该任务，需要与服务器交互
   try {
-    // TODO: 调用服务器API验证任务ID并获取任务信息
-    // 示例API调用: const serverTask = await getTaskFromServer(taskId);
+    // 调用API检查ID是否存在
+    const result = await checkIdExists(taskId);
     
-    // 模拟服务器返回任务信息
-    const serverTask = { progress: 'release' };
-    
-    // 假设服务器返回任务存在且状态为release
-    if (serverTask && serverTask.progress === 'release') {
-      // TODO: 如果任务在服务器但不在本地，可能需要将任务信息同步到本地存储
+    // 根据API返回结果跳转
+    if (result === 'task') {
+      // 主任务跳转release页面
       router.push({ path: '/task-release', query: { taskId } });
-    } else {
-      inputError.value = '无效的任务ID或任务状态不允许跳转';
+    } else if (result === 'table_filling') {
+      // 子任务跳转tablefilling页面，注意参数名必须是link，与TableFilling组件的linkCode计算属性对应
+      router.push({ path: '/table-filling', query: { link: taskId } });
     }
   } catch (error) {
-    console.error('获取任务信息失败:', error);
-    inputError.value = '获取任务信息失败，请稍后重试';
+    console.error('检查ID是否存在失败:', error);
+    // 处理API错误
+    if (error.response?.data?.error) {
+      inputError.value = error.response.data.error;
+    } else {
+      inputError.value = '不存在该任务ID';
+    }
   }
 };
 
@@ -219,12 +206,18 @@ const formatDataSize = (bytes) => {
 
 // 导航到任务页面
 const navigateToTask = (table) => {
-  // 根据任务自己的progress状态决定跳转目标
+  // 从store中获取最新的任务状态
+  const latestTask = store.getTask(table.taskId);
+  const actualProgress = latestTask ? latestTask.progress : table.progress;
+  
+  // 根据最新的progress状态决定跳转目标
   let targetPath;
-  if (table.progress === 'condition') {
+  if (actualProgress === 'condition') {
     targetPath = '/task-condition';
-  } else if (table.progress === 'release') {
+  } else if (actualProgress === 'release') {
     targetPath = '/task-release';
+  } else if (actualProgress === 'completed') {
+    targetPath = '/task-release'; // 完成的任务也显示在release页面
   } else {
     targetPath = '/task-generation';
   }
@@ -249,9 +242,16 @@ const deleteHistoricalTask = async (taskId) => {
     if (task) {
       // 如果任务处在release环节，需要给服务端发消息
       if (task.progress === 'release') {
-        // TODO: 通知服务端删除任务
-        // 示例API调用: await deleteTask(taskId);
-        console.log(`任务${taskId}处于release环节，需要通知服务端删除`);
+        // 通知服务端删除任务
+        try {
+          await deleteTask(taskId);
+        } catch (error) {
+          console.error(`删除任务${taskId}失败:`, error);
+          // 如果任务已删除或不存在，仍继续执行后续逻辑
+          if (!(error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found'))) {
+            throw error;
+          }
+        }
       }
 
       // 从store中删除任务
@@ -279,10 +279,24 @@ const clearHistory = async () => {
       type: 'warning',
     });
 
-    // TODO: 通知服务端删除任务
-    // 1. 获取所有历史任务的taskId
-    // 2. 调用后端API批量删除任务
-    // 示例API调用: await deleteTasks(historicalTables.value.map(table => table.taskId));
+    // 获取所有历史任务
+    const allTasks = [...store.tasks];
+    
+    // 筛选出状态为release的任务并通知服务端删除
+    for (const task of allTasks) {
+      if (task.progress === 'release') {
+        try {
+          await deleteTask(task.taskId);
+        } catch (error) {
+          console.error(`删除任务${task.taskId}失败:`, error);
+          // 如果任务已删除或不存在，仍继续执行后续逻辑
+          if (!(error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found'))) {
+            // 非404错误需要记录，但继续处理其他任务
+            console.error('非404错误:', error);
+          }
+        }
+      }
+    }
 
     // 清除store中的数据
     store.clearAll();
@@ -326,6 +340,11 @@ const loadHistoricalData = () => {
 
 // 页面加载时加载历史表格数据
 onMounted(() => {
+  loadHistoricalData();
+});
+
+// 当组件被激活时重新加载历史数据（用于从其他页面返回时更新状态）
+onActivated(() => {
   loadHistoricalData();
 });
 

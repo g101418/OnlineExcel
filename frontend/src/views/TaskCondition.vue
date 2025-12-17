@@ -22,6 +22,15 @@
               </el-form-item>
             </el-col>
           </el-row>
+          <el-row>
+            <el-col :span="24">
+              <el-form-item label="填表说明" prop="formDescription"
+                :rules="[{ max: 1000, message: '填表说明最长1000字', trigger: ['blur', 'submit'] }]">
+                <el-input v-model="taskForm.formDescription" placeholder="请输入填表说明（选填）" maxlength="1000" show-word-limit
+                  type="textarea" :autosize="{ minRows: 1, maxRows: 5 }" style="width: 70%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
         </el-form>
       </div>
 
@@ -32,6 +41,7 @@
           <p v-if="header"><strong>拆分字段：</strong>{{ header }}</p>
         </div>
         <el-table :data="splitTables" style="width: 100%">
+          <el-table-column type="index" label="序号" width="80" />
           <el-table-column prop="name" label="表格名称" width="180" />
           <el-table-column prop="rowCount" label="行数" width="180" />
           <el-table-column label="操作">
@@ -49,7 +59,7 @@
 
       <!-- 添加操作按钮 -->
       <div class="actions">
-        <el-button type="primary" @click="saveSettings">保存设置并发布</el-button>
+        <el-button type="primary" @click="saveSettingsAndRelease">保存设置并发布</el-button>
         <el-button @click="goToTaskGeneration">返回生成表格</el-button>
       </div>
     </div>
@@ -77,7 +87,7 @@ import { useRouter, useRoute } from "vue-router";
 import { ref, reactive, onMounted, computed, watch } from "vue";
 // 修改导入路径为相对路径
 import PermissionSettingPanel from "../components/PermissionSettingPanel.vue";
-import { useTaskStore } from "../stores/task";
+import { useTaskStore, saveState } from "../stores/task";
 import TaskInfo from "../components/TaskInfo.vue";
 import SparkMD5 from "spark-md5";
 import { ElMessage } from "element-plus";
@@ -137,7 +147,8 @@ const currentTable = ref({});
 // 任务表单数据
 const taskForm = reactive({
   taskName: '',
-  taskDeadline: null
+  taskDeadline: null,
+  formDescription: ''
 });
 
 // 日期禁用规则：从第二天开始，最长3周
@@ -292,49 +303,103 @@ const goToTaskGeneration = async () => {
 
 const goHome = () => router.push({ path: "/" });
 
-const saveSettings = async () => {
-  // 验证任务信息
-  if (!validateTaskInfo()) {
-    return;
-  }
+const saveSettingsAndRelease = async () => {
+    // 验证任务信息
+    if (!validateTaskInfo()) {
+      return;
+    }
 
-  try {
-    // 生成表格随机编码
-    const generateTableCode = (table, index) => {
-      const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
-      const tableIdentifier = `${table.name || `table_${index}`}:${table.rowCount}:${index}`;
-      const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
-      return SparkMD5.hash(metaStr).slice(0, 28);
-    };
+    try {
+      // 生成表格随机编码
+      const generateTableCode = (table, index) => {
+        const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
+        const tableIdentifier = table.name || `table_${index}`;
+        const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
+        return SparkMD5.hash(metaStr).slice(0, 28);
+      };
 
-    // 为所有表格生成随机编码并保存到store
-    const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
-    // 保存到store时保留完整信息，方便前端使用
-    const tableLinks = splitTables.value.map((table, index) => ({
-      name: table.name,
-      code: tableCodes[index],
-      link: `${window.location.origin}/process-table?link=${tableCodes[index]}`
-    }));
-    store.setTableLinks(taskId.value, tableLinks);
+      // 为所有表格生成随机编码并保存到store
+      const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
+      // 保存到store时保留完整信息，方便前端使用
+      const tableLinks = splitTables.value.map((table, index) => ({
+        name: table.name,
+        code: tableCodes[index]
+      }));
+      store.setTableLinks(taskId.value, tableLinks);
+      // 将任务名称和截止日期保存到store
+      store.setTaskName(taskId.value, taskForm.taskName);
+      store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
+      
+      // 更新本地store的splitData
+      let updatedSplitData = [];
+      if (!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0) {
+        // 未拆分的情况：使用完整数据作为一个表格
+        updatedSplitData = [{
+          sheetName: currentTask.value.fileName || '未拆分表格',
+          data: currentTask.value.uploadedData,
+          headers: currentTask.value.uploadedHeaders
+        }];
+      } else if (currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0) {
+        // 已拆分的情况：使用现有的splitData
+        updatedSplitData = currentTask.value.splitData;
+      }
+      // 更新store中的splitData
+      if (updatedSplitData.length > 0) {
+        const task = store.tasks.find(task => task.taskId === taskId.value);
+        if (task) {
+          task.splitData = updatedSplitData;
+          // 手动保存状态到本地存储
+          saveState(store.$state);
+        }
+      }
 
-    // 将任务名称和截止日期保存到store
-    store.setTaskName(taskId.value, taskForm.taskName);
-    store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
-
-    // 准备发送到服务端的数据
-    const taskData = {
+    // 更新本地store的进度状态为release
+      store.setProgress(taskId.value, 'release');
+      
+      // 准备发送到服务端的数据
+      const taskData = {
+        // 任务基本信息
       taskId: taskId.value,
       fileName: fileName.value,
-      taskName: taskForm.taskName, // 添加任务名称
-      taskDeadline: taskForm.taskDeadline, // 添加任务截止日期
-      tableLinks: tableCodes, // 只发送随机编码数组
-      uploadedHeaders: currentTask.value?.uploadedHeaders || [],
-      uploadedData: currentTask.value?.uploadedData || [],
-      split: split.value,
-      header: header.value,
-      selectedHeader: currentTask.value?.selectedHeader || '',
-      splitData: currentTask.value?.splitData || [],
-      permissions: currentTask.value?.permissions || { row: {}, columns: [] }
+      taskName: taskForm.taskName,
+      taskDeadline: taskForm.taskDeadline,
+      formDescription: taskForm.formDescription,
+      updateTime: currentTask.value?.updateTime || new Date().toISOString(),
+        
+        // 上传的数据
+        uploadedHeaders: currentTask.value?.uploadedHeaders || [],
+        uploadedData: currentTask.value?.uploadedData || [],
+        
+        // 拆分相关信息
+        splitEnabled: currentTask.value?.splitEnabled || false,
+        selectedHeader: currentTask.value?.selectedHeader || '',
+        split: split.value,
+        header: header.value,
+        
+        // 确保未拆分的表格也有splitData数据
+        ...(!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0 && {
+          splitData: [{
+            sheetName: currentTask.value.fileName || '未拆分表格',
+            data: currentTask.value.uploadedData,
+            headers: currentTask.value.uploadedHeaders
+          }]
+        }),
+        // 拆分后的表格数据（如果已经有拆分数据，会覆盖上面的默认值）
+        ...(currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0 && {
+          splitData: currentTask.value.splitData
+        }),
+      
+      // 生成的表格链接（发送包含code和name的对象数组，以便后端创建table_fillings记录）
+      tableLinks: tableLinks,
+      
+      // 权限设置
+      permissions: currentTask.value?.permissions || { row: {}, columns: [] },
+      
+      // 面板折叠状态
+      permissionPanelCollapsed: currentTask.value?.permissionPanelCollapsed || false,
+      
+      // 处理进度状态 - 发送到服务端时设置为release
+        progress: 'release'
     };
 
     // 调用API保存设置到服务端
@@ -370,6 +435,7 @@ onMounted(() => {
       // 4. 加载任务表单数据
       taskForm.taskName = task.taskName || '';
       taskForm.taskDeadline = task.taskDeadline || null;
+      taskForm.formDescription = task.formDescription || '';
 
     } else {
 
@@ -406,6 +472,16 @@ watch(
   (newDeadline) => {
     if (taskId.value) {
       store.setTaskDeadline(taskId.value, newDeadline);
+    }
+  }
+);
+
+// 监听填表说明变化，实时保存到store
+watch(
+  () => taskForm.formDescription,
+  (newDescription) => {
+    if (taskId.value) {
+      store.setFormDescription(taskId.value, newDescription);
     }
   }
 );

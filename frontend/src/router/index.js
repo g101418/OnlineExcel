@@ -36,7 +36,7 @@ const routes = [
         component: ErrorPage,
     },
     {
-        path: "/fill",
+        path: "/table-filling",
         name: "TableFilling",
         component: TableFilling,
     },
@@ -66,8 +66,9 @@ router.beforeEach((to, from, next) => {
         // 找到对应的任务
         const task = taskStore.tasks.find(t => t.taskId === taskId);
         
-        if (!task) {
-            // 任务不存在，跳转到错误页面
+        // 特殊处理TaskRelease页面，允许访问即使本地没有任务信息
+        if (!task && to.name !== 'TaskRelease' && to.name !== 'TableFilling') {
+            // 任务不存在且不是访问TaskRelease页面，跳转到错误页面
             next({ name: 'Error' });
             return;
         }
