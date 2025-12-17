@@ -36,7 +36,7 @@ const routes = [
         component: ErrorPage,
     },
     {
-        path: "/fill",
+        path: "/table-filling",
         name: "TableFilling",
         component: TableFilling,
     },

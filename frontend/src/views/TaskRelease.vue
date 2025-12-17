@@ -103,7 +103,7 @@ const shortenLink = (code) => {
 
 // 复制链接
 const copyLink = async (code) => {
-  const fullLink = `${window.location.origin}/process-table?link=${code}`;
+  const fullLink = `${window.location.origin}/table-filling?link=${code}`;
   try {
     await navigator.clipboard.writeText(fullLink);
     ElMessage.success({
