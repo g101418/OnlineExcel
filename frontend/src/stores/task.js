@@ -20,7 +20,34 @@ const hasEnoughStorage = (data) => {
 const loadState = () => {
   try {
     const savedState = localStorage.getItem(STORAGE_KEY)
-    return savedState ? JSON.parse(savedState) : null
+    if (savedState) {
+      const parsedState = JSON.parse(savedState)
+      // 如果是旧格式（单任务），转换为新格式（多任务）
+      if (parsedState.taskId && !parsedState.tasks) {
+        // 确保单个任务有完整的permissions对象
+        if (!parsedState.permissions) {
+          parsedState.permissions = getDefaultPermissions()
+        }
+        return {
+          tasks: [parsedState]
+        }
+      }
+      // 确保所有任务都有完整的permissions对象
+      if (parsedState.tasks) {
+        parsedState.tasks = parsedState.tasks.map(task => {
+          if (!task.permissions) {
+            task.permissions = getDefaultPermissions()
+          }
+          return task
+        })
+      }
+      // 移除旧的currentTaskId字段
+      if (parsedState.currentTaskId) {
+        delete parsedState.currentTaskId
+      }
+      return parsedState
+    }
+    return null
   } catch (error) {
     console.error('Failed to load state from localStorage:', error)
     return null
@@ -31,18 +58,7 @@ const loadState = () => {
 export const saveState = (state) => {
   try {
     const stateToSave = {
-      taskId: state.taskId,
-      fileName: state.fileName,
-      uploadedHeaders: state.uploadedHeaders,
-      uploadedData: state.uploadedData,
-      splitEnabled: state.splitEnabled,
-      selectedHeader: state.selectedHeader,
-      split: state.split,
-      header: state.header,
-      splitData: state.splitData,
-      tableLinks: state.tableLinks,
-      permissions: state.permissions,
-      progress: state.progress
+      tasks: state.tasks
     }
     
     // 检查存储空间
@@ -59,40 +75,46 @@ export const saveState = (state) => {
   }
 }
 
-// 权限设置字典
-export const permissionDict = {
-  // 行权限
-  rowPermissions: {
-    editable: false, // 默认不可编辑
-    deletable: false, // 默认不可删除
-    selectable: true // 默认可选择
-  },
-  // 单元格权限
-  cellPermissions: {
-    editable: false, // 默认不可编辑
-    copyable: true // 默认可复制
-  },
-  // 默认列权限
-  defaultColumnPermissions: {
-    editable: false,
-    validation: {
-      type: '',
-      min: null,
-      max: null,
-      maxLength: null,
-      options: ''
-    }
-  }
-}
+import { permissionDict, applyPermissionsToTable, getDefaultPermissions } from '../hooks/tablePermission';
 
 export const useTaskStore = defineStore('task', {
   state: () => {
     // 从本地存储加载状态，如果没有则使用默认状态
     const savedState = loadState()
     return savedState || {
+      // 任务列表，每个任务包含完整的任务数据结构
+      tasks: []
+    }
+  },
+  
+  getters: {
+    // 获取所有历史任务
+    allTasks: (state) => state.tasks
+  },
+  
+  actions: {
+    // 创建新任务
+createTask(taskId, fileName) {
+  // 检查是否已存在相同ID的任务
+  const existingTaskIndex = this.tasks.findIndex(task => task.taskId === taskId)
+  const now = new Date().toLocaleString('zh-CN')
+  if (existingTaskIndex !== -1) {
+    // 如果存在，确保现有任务有默认权限
+    if (!this.tasks[existingTaskIndex].permissions) {
+      this.tasks[existingTaskIndex].permissions = getDefaultPermissions()
+    }
+    // 更新任务时间
+    this.tasks[existingTaskIndex].updateTime = now
+  } else {
+    // 创建新任务
+    const newTask = {
       // 任务信息
-      taskId: '',
-      fileName: '',
+      taskId,
+      fileName,
+      taskName: '',
+      taskDeadline: null,
+      formDescription: '',
+      updateTime: now,
       
       // 上传的数据
       uploadedHeaders: [],
@@ -111,80 +133,72 @@ export const useTaskStore = defineStore('task', {
       tableLinks: [],
       
       // 权限设置
-      permissions: {
-        row: {
-          ...permissionDict.rowPermissions
-        },
-        cell: {
-          ...permissionDict.cellPermissions
-        },
-        columns: []
-      },
+      permissions: getDefaultPermissions(),
+      
+      // 面板折叠状态
+      permissionPanelCollapsed: false,
       
       // 处理进度状态
-      // 可选值: 'generation' (在任务生成页), 'condition' (在条件设置页), 'release' (在任务发布页)
       progress: 'generation'
     }
-  },
-  
-  getters: {
-    // 获取任务是否存在
-    hasTask: (state) => !!state.taskId,
+    this.tasks.push(newTask)
+  }
+  // 保存状态到本地存储
+  saveState(this.$state)
+},
     
-    // 获取是否有上传数据
-    hasUploadedData: (state) => state.uploadedData.length > 0,
+
     
-    // 获取拆分后的表格数量
-    splitTablesCount: (state) => state.splitData.length,
-    
-    // 获取列权限设置
-    columnPermissions: (state) => state.permissions.columns
-  },
-  
-  actions: {
-    // 设置任务信息
-    setTaskInfo(taskId, fileName) {
-      this.taskId = taskId
-      this.fileName = fileName
-      // 保存状态到本地存储
-      saveState(this.$state)
+    // 获取任务
+    getTask(taskId) {
+      return this.tasks.find(task => task.taskId === taskId)
     },
     
     // 设置上传的数据
-    setUploadedData(headers, data) {
-      this.uploadedHeaders = headers
-      this.uploadedData = data
-      // 保存状态到本地存储
-      saveState(this.$state)
+    setUploadedData(taskId, headers, data) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.uploadedHeaders = headers
+        task.uploadedData = data
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
     },
     
     // 清除上传的数据
-    clearUploadedData() {
-      this.uploadedHeaders = []
-      this.uploadedData = []
-      // 保存状态到本地存储
-      saveState(this.$state)
+    clearUploadedData(taskId) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.uploadedHeaders = []
+        task.uploadedData = []
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
     },
     
     // 设置拆分相关信息
-    setSplitInfo(splitEnabled, selectedHeader = '') {
-      this.splitEnabled = splitEnabled
-      this.selectedHeader = selectedHeader
-      // 保存状态到本地存储
-      saveState(this.$state)
+    setSplitInfo(taskId, splitEnabled, selectedHeader = '') {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.splitEnabled = splitEnabled
+        task.selectedHeader = selectedHeader
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
     },
     
     // 执行表格拆分
-    doSplit() {
-      if (!this.selectedHeader || this.uploadedData.length === 0) return
+    doSplit(taskId) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (!task || !task.selectedHeader || task.uploadedData.length === 0) return
       
       // 找到选择的表头对应的索引
-      const headerIndex = this.uploadedHeaders.indexOf(this.selectedHeader)
+      const headerIndex = task.uploadedHeaders.indexOf(task.selectedHeader)
       if (headerIndex === -1) return
       
       // 按照选择的字段对数据进行分组
       const groupedData = {}
-      this.uploadedData.forEach(row => {
+      task.uploadedData.forEach(row => {
         const key = row[headerIndex] // 使用索引获取值
         if (!groupedData[key]) {
           groupedData[key] = []
@@ -193,90 +207,130 @@ export const useTaskStore = defineStore('task', {
       })
       
       // 将分组后的数据转换为拆分后的表格格式
-      this.splitData = Object.keys(groupedData).map(key => ({
-        sheetName: `${this.selectedHeader}_${key}`,
+      task.splitData = Object.keys(groupedData).map(key => ({
+        sheetName: `${task.selectedHeader}_${key}`,
         data: groupedData[key],
-        headers: this.uploadedHeaders
+        headers: task.uploadedHeaders
       }))
       
-      this.split = true
-      this.header = this.selectedHeader
+      task.split = true
+      task.header = task.selectedHeader
       // 保存状态到本地存储
       saveState(this.$state)
     },
     
-    // 设置权限
-    setPermissions(type, permissions) {
-      if (type === 'row' || type === 'cell') {
-        this.permissions[type] = {...this.permissions[type], ...permissions}
+    // 设置列权限
+    setColumnPermissions(taskId, columns) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        // 确保permissions对象存在且完整
+        if (!task.permissions) {
+          task.permissions = getDefaultPermissions()
+        }
+        task.permissions.columns = columns
         // 保存状态到本地存储
         saveState(this.$state)
       }
     },
     
-    // 设置列权限
-    setColumnPermissions(columns) {
-      this.permissions.columns = columns
-      // 保存状态到本地存储
-      saveState(this.$state)
-    },
-    
-    // 为特定表格应用权限设置
-    applyPermissionsToTable(tableData, columns) {
-      // 应用行权限
-      const rowsWithPermissions = tableData.map(row => ({
-        ...row,
-        _permissions: {
-          ...this.permissions.row
-        }
-      }))
-      
-      // 应用列权限
-      const columnsWithPermissions = columns.map(col => {
-        const existingColPermission = this.permissions.columns.find(p => p.label === col)
-        return {
-          label: col,
-          prop: col,
-          ...permissionDict.defaultColumnPermissions,
-          ...existingColPermission
-        }
-      })
-      
-      return {
-        data: rowsWithPermissions,
-        columns: columnsWithPermissions
+    // 保存完整的权限设置
+    savePermissions(taskId, permissions) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.permissions = permissions
+        // 保存状态到本地存储
+        saveState(this.$state)
       }
     },
     
+    // 设置行权限
+    setRowPermissions(taskId, rowPermissions) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        // 确保permissions对象存在且完整
+        if (!task.permissions) {
+          task.permissions = getDefaultPermissions()
+        }
+        task.permissions.row = rowPermissions
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 为特定表格应用权限设置
+    applyPermissionsToTable(taskId, tableData, columns) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        return applyPermissionsToTable(tableData, columns, task.permissions)
+      }
+      return tableData
+    },
+    
     // 设置表格链接
-    setTableLinks(links) {
-      this.tableLinks = links
-      // 保存状态到本地存储
-      saveState(this.$state)
+    setTableLinks(taskId, links) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.tableLinks = links
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 设置任务名称
+    setTaskName(taskId, taskName) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.taskName = taskName
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 设置任务截止日期
+    setTaskDeadline(taskId, taskDeadline) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.taskDeadline = taskDeadline
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 设置填表说明
+    setFormDescription(taskId, formDescription) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.formDescription = formDescription
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 设置进度状态
+    setProgress(taskId, progress) {
+      const task = this.tasks.find(task => task.taskId === taskId)
+      if (task) {
+        task.progress = progress
+        // 保存状态到本地存储
+        saveState(this.$state)
+      }
+    },
+    
+    // 删除任务
+    deleteTask(taskId) {
+      const taskIndex = this.tasks.findIndex(task => task.taskId === taskId)
+      if (taskIndex !== -1) {
+        this.tasks.splice(taskIndex, 1)
+        // 保存状态到本地存储
+        saveState(this.$state)
+        return true
+      }
+      return false
     },
     
     // 清除所有任务数据
     clearAll() {
-      this.taskId = ''
-      this.fileName = ''
-      this.uploadedHeaders = []
-      this.uploadedData = []
-      this.splitEnabled = false
-      this.selectedHeader = ''
-      this.split = false
-      this.header = ''
-      this.splitData = []
-      this.tableLinks = []
-      this.permissions = {
-        row: {
-          ...permissionDict.rowPermissions
-        },
-        cell: {
-          ...permissionDict.cellPermissions
-        },
-        columns: []
-      }
-      this.progress = 'generation'
+      this.tasks = []
       // 清除本地存储中的数据
       try {
         localStorage.removeItem(STORAGE_KEY)

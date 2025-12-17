@@ -1,6 +1,6 @@
 <template>
   <div class="task-generation-root">
-    <TaskInfo title="任务生成" :taskId="taskId" :fileName="fileName" :showDivider="true" @task-validity-change="handleTaskValidityChange" />
+    <TaskInfo title="任务生成" :showDivider="true" @task-validity-change="handleTaskValidityChange" />
     <div class="content-wrapper">
       <!-- 只有当任务有效时，才显示内容 -->
       <div v-if="isTaskValid" class="main-area">
@@ -38,14 +38,22 @@ const route = useRoute();
 const router = useRouter();
 const store = useTaskStore();
 
-// 从store获取数据
-const taskId = computed(() => store.taskId);
-const fileName = computed(() => store.fileName);
-const headers = computed(() => store.uploadedHeaders);
-const rawData = computed(() => store.uploadedData);
+// 从路由query获取taskId
+const taskId = computed(() => route.query.taskId as string);
+
+// 从store获取当前任务
+const currentTask = computed(() => {
+  if (!taskId.value) return null;
+  return store.tasks.find(task => task.taskId === taskId.value);
+});
+
+// 从当前任务获取数据
+const fileName = computed(() => currentTask.value?.fileName || '');
+const headers = computed(() => currentTask.value?.uploadedHeaders || []);
+const rawData = computed(() => currentTask.value?.uploadedData || []);
 const hotData = ref<any[]>([]);
-const splitEnabled = ref(store.splitEnabled);
-const selectedHeader = ref(store.selectedHeader);
+const splitEnabled = ref(currentTask.value?.splitEnabled || false);
+const selectedHeader = ref(currentTask.value?.selectedHeader || '');
 // 任务有效性状态（由TaskInfo组件传递）
 const isTaskValid = ref(true);
 
@@ -55,16 +63,20 @@ const handleTaskValidityChange = (valid: boolean) => {
 };
 
 onMounted(async () => {
-  // 直接处理数据，路由参数与store的一致性已由TaskInfo组件检查
-  // 将原始数据转换为表格需要的对象格式
-  if (rawData.value && rawData.value.length && headers.value.length) {
-    hotData.value = rawData.value.map((row: any[]) => {
-      const obj: any = {};
-      headers.value.forEach((hd, idx) => {
-        obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+  if (currentTask.value) {
+    // 设置当前进度为任务生成页面
+    store.setProgress(taskId.value, 'generation');
+    // 直接处理数据，路由参数与store的一致性已由TaskInfo组件检查
+    // 将原始数据转换为表格需要的对象格式
+    if (rawData.value && rawData.value.length && headers.value.length) {
+      hotData.value = rawData.value.map((row: any[]) => {
+        const obj: any = {};
+        headers.value.forEach((hd, idx) => {
+          obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+        });
+        return obj;
       });
-      return obj;
-    });
+    }
   }
 });
 
@@ -98,27 +110,44 @@ const goHome = () => {
 };
 
 const handleSetConditions = () => {
+  if (!currentTask.value) return;
+  
+  // 当启用拆分时，检查选择的列是否有空白单元格
+  if (splitEnabled.value && selectedHeader.value) {
+    // 找到选择的列在headers中的索引
+    const columnIndex = headers.value.indexOf(selectedHeader.value);
+    if (columnIndex !== -1) {
+      // 检查该列是否有空白单元格
+      const hasEmptyCells = rawData.value.some(row => {
+        const cellValue = row[columnIndex];
+        return cellValue === undefined || cellValue === null || String(cellValue).trim() === '';
+      });
+      
+      if (hasEmptyCells) {
+        ElMessage.error(`选择的拆分列 "${selectedHeader.value}" 包含空白单元格，请确保该列所有单元格都有值`);
+        return;
+      }
+    }
+  }
+  
   // 检查状态是否发生了变更
-  const statusChanged = splitEnabled.value !== store.splitEnabled || 
-                       (splitEnabled.value && selectedHeader.value !== store.selectedHeader);
+  const statusChanged = splitEnabled.value !== currentTask.value.splitEnabled || 
+                       (splitEnabled.value && selectedHeader.value !== currentTask.value.selectedHeader);
 
   if (statusChanged) {
     // 根据当前选择更新store状态
     if (splitEnabled.value) {
       // 执行拆分
-      store.setSplitInfo(true, selectedHeader.value);
-      store.doSplit();
+      store.setSplitInfo(taskId.value, true, selectedHeader.value);
+      store.doSplit(taskId.value);
     } else {
       // 清除拆分信息
-      store.setSplitInfo(false, '');
-      store.split = false;
-      store.header = '';
-      store.splitData = [];
+      store.setSplitInfo(taskId.value, false, '');
     }
   }
 
   // 设置进度为条件设置页面
-  store.progress = 'condition';
+  store.setProgress(taskId.value, 'condition');
   router.push({
     path: "/task-condition",
     query: { taskId: taskId.value },
