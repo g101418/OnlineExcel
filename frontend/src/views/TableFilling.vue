@@ -219,6 +219,12 @@ const fetchTableData = async () => {
     try {
         const response = await getTaskFillingData(linkCode.value)
         
+        // 如果响应为空或缺少必要数据，跳转到错误页面
+        if (!response || !response.headers || !response.tableData) {
+            router.push('/error')
+            return
+        }
+        
         // 设置任务信息
         taskInfo.taskId = response.taskId || ''
         taskInfo.taskName = response.taskName || ''
@@ -239,12 +245,8 @@ const fetchTableData = async () => {
         ElMessage.success('表格数据加载成功')
     } catch (error) {
         console.error('获取表格数据失败:', error)
-        // 当服务端返回资源不存在的错误时，跳转到错误页面
-        if (error.response?.status === 404 || error.message === 'Filling task not found') {
-            router.push('/error')
-        } else {
-            ElMessage.error('表格数据加载失败，请刷新页面重试')
-        }
+        // 所有错误情况下都跳转到错误页面
+        router.push('/error')
     }
 }
 
