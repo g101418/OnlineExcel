@@ -457,3 +457,44 @@ exports.getAllTasks = (callback) => {
     callback(null, tasks);
   });
 };
+
+// 检查ID是否存在（支持taskid和子任务id查询）
+exports.checkIdExists = (id, callback) => {
+  // 根据ID长度判断查询表
+  if (id.length === 24) {
+    // 24位ID，查询主任务表
+    const checkTaskSql = `SELECT taskId FROM tasks WHERE taskId = ?`;
+    db.get(checkTaskSql, [id], (err, task) => {
+      if (err) {
+        return callback(err);
+      }
+      
+      if (task) {
+        // 存在task，返回"task"
+        return callback(null, "task");
+      }
+      
+      // 不存在，返回错误
+      callback(new Error("ID not found"));
+    });
+  } else if (id.length === 30) {
+    // 30位ID，查询子任务表
+    const checkFillingTaskSql = `SELECT filling_task_id FROM table_fillings WHERE filling_task_id = ?`;
+    db.get(checkFillingTaskSql, [id], (err, fillingTask) => {
+      if (err) {
+        return callback(err);
+      }
+      
+      if (fillingTask) {
+        // 存在table_filling任务，返回"table_filling"
+        return callback(null, "table_filling");
+      }
+      
+      // 不存在，返回错误
+      callback(new Error("ID not found"));
+    });
+  } else {
+    // 长度不符合要求，直接返回错误
+    callback(new Error("Invalid ID length"));
+  }
+};

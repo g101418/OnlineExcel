@@ -250,6 +250,19 @@ const restoreTable = (req, res) => {
   });
 };
 
+// 13. 检查ID是否存在（支持taskid和子任务id查询）
+const checkIdExists = (req, res) => {
+  const id = req.params.id;
+  
+  taskService.checkIdExists(id, (err, result) => {
+    if (err) {
+      return res.status(404).json({ error: err.message });
+    }
+    
+    res.status(200).json(result);
+  });
+};
+
 module.exports = {
   saveTask,
   getTaskReleaseData,
@@ -264,5 +277,6 @@ module.exports = {
   saveDraft,
   withdrawTable,
   getSubTaskStatuses,
-  restoreTable
+  restoreTable,
+  checkIdExists
 };

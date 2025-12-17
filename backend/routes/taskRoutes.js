@@ -47,4 +47,7 @@ router.post('/table-filling/save-draft/:linkCode', taskController.saveDraft);
 // 10. 还原表格数据
 router.post('/table-filling/restore-table-data/:linkCode', taskController.restoreTable);
 
+// 11. 检查ID是否存在（支持taskid和子任务id查询）
+router.get('/check-id-exists/:id', taskController.checkIdExists);
+
 module.exports = router;
