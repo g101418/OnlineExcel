@@ -237,6 +237,19 @@ const getSubTaskStatuses = (req, res) => {
   });
 };
 
+// 12. 还原表格数据
+const restoreTable = (req, res) => {
+  const linkCode = req.params.linkCode;
+  
+  taskService.restoreTable(linkCode, (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    res.status(200).json(result);
+  });
+};
+
 module.exports = {
   saveTask,
   getTaskReleaseData,
@@ -250,5 +263,6 @@ module.exports = {
   getTaskFillingTableData,
   saveDraft,
   withdrawTable,
-  getSubTaskStatuses
+  getSubTaskStatuses,
+  restoreTable
 };

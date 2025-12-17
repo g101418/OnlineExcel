@@ -27,7 +27,9 @@
                         <template #content>
                             <div v-html="permissionTooltipContent"></div>
                         </template>
-                        <el-icon class="permission-icon"><InfoFilled /></el-icon>
+                        <el-icon class="permission-icon">
+                            <InfoFilled />
+                        </el-icon>
                     </el-tooltip>
                 </p>
             </div>
@@ -47,28 +49,24 @@
         </div>
         <!-- 操作按钮 -->
         <div class="action-buttons">
-            <!-- 暂存按钮：只有在填报中或已退回状态才可用 -->
-            <el-button 
-                @click="handleSaveDraft" 
-                :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned')"
-            >
+            <!-- 暂存按钮：只有在填报中或已退回状态才显示 -->
+            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                @click="handleSaveDraft">
                 暂存
             </el-button>
-            
+
+            <!-- 还原按钮：只有在填报中或已退回状态才可用，与暂存按钮显示逻辑一致 -->
+            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                @click="handleRestore">
+                还原表格
+            </el-button>
+
             <!-- 提交/撤回按钮：根据状态动态切换 -->
-            <el-button 
-                v-if="taskInfo.fillingStatus === 'submitted'" 
-                type="warning" 
-                @click="handleWithdraw"
-            >
+            <el-button v-if="taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
                 撤回
             </el-button>
-            <el-button 
-                v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                type="primary" 
-                :disabled="!canSubmit" 
-                @click="handleSubmit"
-            >
+            <el-button v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                type="primary" :disabled="!canSubmit" @click="handleSubmit">
                 提交
             </el-button>
         </div>
@@ -88,7 +86,7 @@ import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
 import 'handsontable/dist/handsontable.full.css'
 // API
-import { getTaskFillingData, saveDraft, submitTable, withdrawTable } from '../api/task'
+import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable } from '../api/task'
 
 // ======================
 // Handsontable 初始化
@@ -170,7 +168,7 @@ const permissionTooltipContent = computed(() => {
     let content = '<div style="max-width: 400px;">'
     content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">列权限设置：</h4>'
     content += '<ul style="margin: 0; padding-left: 20px;">'
-    
+
     // 如果originalHeaders或permissions.columns为空，显示相应提示
     if (originalHeaders.value.length === 0) {
         content += '<li>暂无列权限信息</li>'
@@ -178,15 +176,15 @@ const permissionTooltipContent = computed(() => {
         originalHeaders.value.forEach((header, index) => {
             const colPermission = permissions.columns[index] || {}
             content += `<li><strong>${header}：</strong>`
-            
+
             // 显示列权限信息
             const permissionsList = []
-            
+
             // 基本权限
             if (!colPermission.editable) permissionsList.push('不可编辑')
             if (colPermission.editable) permissionsList.push('可编辑')
             if (colPermission.required) permissionsList.push('必填')
-            
+
             // 验证规则
             const validation = colPermission.validation
             if (validation) {
@@ -197,7 +195,7 @@ const permissionTooltipContent = computed(() => {
                     case 'number': typeText = validation.isInteger ? '整数' : '数字'; break
                     case 'date': typeText = '日期'; break
                     case 'options': typeText = '选项'; break
-                    case 'regex': 
+                    case 'regex':
                         if (validation.regexName === '手机号') {
                             typeText = '手机号'
                         } else if (validation.regexName) {
@@ -208,9 +206,9 @@ const permissionTooltipContent = computed(() => {
                         break
                     default: typeText = validation.type
                 }
-                
+
                 if (typeText) permissionsList.push(`类型：${typeText}`)
-                
+
                 // 范围限制
                 if (validation.min !== null && validation.max !== null) {
                     if (validation.type === 'date') {
@@ -231,35 +229,35 @@ const permissionTooltipContent = computed(() => {
                         permissionsList.push(`最大值：${validation.max}`)
                     }
                 }
-                
+
                 // 最大长度
                 if (validation.maxLength) {
                     permissionsList.push(`最大长度：${validation.maxLength}`)
                 }
-                
+
                 // 选项
                 if (validation.options && Array.isArray(validation.options) && validation.options.length > 0) {
                     permissionsList.push(`选项：${validation.options.join(' / ')}`)
                 }
-                
+
                 // 日期格式
                 if (validation.format && validation.type === 'date') {
                     permissionsList.push(`日期格式：${validation.format}`)
                 }
             }
-            
+
             if (permissionsList.length > 0) {
                 content += permissionsList.join('，')
             } else {
                 content += '仅可读'
             }
-            
+
             content += '</li>'
         })
     }
-    
+
     content += '</ul>'
-    
+
     // 显示行权限信息
     content += '<h4 style="margin-top: 12px; margin-bottom: 8px; font-size: 14px;">行权限设置：</h4>'
     content += '<ul style="margin: 0; padding-left: 20px;">'
@@ -270,7 +268,7 @@ const permissionTooltipContent = computed(() => {
         content += '<li>行不可编辑</li>'
     }
     content += '</ul>'
-    
+
     content += '</div>'
     return content
 })
@@ -361,23 +359,23 @@ const fetchTableData = async () => {
 
     try {
         const response = await getTaskFillingData(linkCode.value)
-        
+
         // 如果响应为空或缺少必要数据，跳转到错误页面
         if (!response || !response.headers || !response.tableData) {
             router.push('/error')
             return
         }
-        
+
         // 设置任务信息
         taskInfo.taskId = response.taskId || ''
         taskInfo.taskName = response.taskName || ''
         taskInfo.taskDeadline = response.taskDeadline || ''
         taskInfo.fillingStatus = response.fillingStatus || ''
-        
+
         // 设置表格数据
         originalHeaders.value = response.headers || []
         tableData.value = response.tableData || []
-        
+
         // 设置权限与校验规则
         permissions.row = response.permissions?.row || {
             addable: false,
@@ -385,7 +383,7 @@ const fetchTableData = async () => {
             sortable: false
         }
         permissions.columns = response.permissions?.columns || []
-        
+
         ElMessage.success('表格数据加载成功')
     } catch (error) {
         console.error('获取表格数据失败:', error)
@@ -406,7 +404,7 @@ const handleSaveDraft = async () => {
     try {
         const hot = hotTableRef.value.hotInstance
         const currentData = hot.getData()
-        
+
         await saveDraft(linkCode.value, currentData)
         ElMessage.success('表格数据暂存成功')
     } catch (error) {
@@ -427,10 +425,10 @@ const handleSubmit = async () => {
     try {
         const hot = hotTableRef.value.hotInstance
         const currentData = hot.getData()
-        
+
         await submitTable(linkCode.value, currentData)
         ElMessage.success('表格数据提交成功')
-        
+
         // 提交成功后重新获取最新的任务数据，确保状态更新
         await fetchTableData()
     } catch (error) {
@@ -562,7 +560,7 @@ const getDeadlineStatus = () => {
     const now = new Date()
     const deadline = new Date(taskInfo.taskDeadline)
     const diffDays = (deadline.getTime() - now.getTime()) / (1000 * 3600 * 24)
-    
+
     if (diffDays < 0) return 'danger' // 已过期
     if (diffDays < 3) return 'warning' // 即将过期
     return 'success' // 正常
@@ -572,10 +570,10 @@ const getDeadlineText = () => {
     if (!taskInfo.taskDeadline) return '进行中'
     const now = new Date()
     const deadline = new Date(taskInfo.taskDeadline)
-    
+
     if (now > deadline) return '已过期'
     const diffDays = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 3600 * 24))
-    
+
     if (diffDays === 0) return '今天截止'
     if (diffDays === 1) return '明天截止'
     return `剩余${diffDays}天`
@@ -620,6 +618,26 @@ const handleWithdraw = async () => {
     } catch (error) {
         console.error('撤回表格提交失败:', error)
         ElMessage.error('表格提交撤回失败，请重试')
+    }
+}
+
+// ======================
+// 还原表格数据
+// ======================
+const handleRestore = async () => {
+    if (!linkCode.value) {
+        ElMessage.error('缺少必要的链接参数')
+        return
+    }
+
+    try {
+        await restoreTable(linkCode.value)
+        ElMessage.success('表格数据已成功还原')
+        // 刷新表格数据
+        await fetchTableData()
+    } catch (error) {
+        console.error('还原表格数据失败:', error)
+        ElMessage.error('表格数据还原失败，请重试')
     }
 }
 

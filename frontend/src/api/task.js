@@ -174,3 +174,17 @@ export const submitTable = async (linkCode, tableData) => {
     throw error;
   }
 };
+
+/**
+ * 还原表格数据（用原始数据覆盖修改后的数据）
+ * @param {string} linkCode - 任务链接码
+ * @returns {Promise<Object>} - 返回还原结果
+ */
+export const restoreTable = async (linkCode) => {
+  try {
+    return await post(`/table-filling/restore-table-data/${linkCode}`);
+  } catch (error) {
+    console.error("还原表格数据出错:", error);
+    throw error;
+  }
+};

@@ -413,6 +413,29 @@ exports.getTaskFillingTableData = (linkCode, callback) => {
   });
 };
 
+// 还原表格数据（用原始数据覆盖修改后的数据）
+exports.restoreTable = (linkCode, callback) => {
+  const sql = `
+    UPDATE table_fillings 
+    SET modified_table_data = original_table_data, updated_at = CURRENT_TIMESTAMP 
+    WHERE filling_task_id = ?
+  `;
+  db.run(sql, [linkCode], function(err) {
+    if (err) {
+      return callback(err);
+    }
+    
+    if (this.changes === 0) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    callback(null, {
+      linkCode,
+      message: 'Table data restored successfully'
+    });
+  });
+};
+
 // 获取所有任务
 exports.getAllTasks = (callback) => {
   const sql = `SELECT * FROM tasks ORDER BY created_at DESC`;
