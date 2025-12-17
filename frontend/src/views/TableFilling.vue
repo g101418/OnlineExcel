@@ -307,12 +307,12 @@ const hotSettings = computed(() => ({
         TH.removeAttribute('title');
         if (TH.__tooltipInstance) delete TH.__tooltipInstance;
     },
-    minRows: 0,
+    minRows: tableData.value.length > 0 ? tableData.value.length : 1,
     rowHeights: 36,
     autoWrapRow: true,
     autoWrapCol: true,
     className: 'htCenter',
-    columns: originalHeaders.value.map((_, colIndex) => {
+    columns: originalHeaders.value.length > 0 ? originalHeaders.value.map((_, colIndex) => {
         const perm = permissions.columns[colIndex]
         return {
             data: colIndex,
@@ -322,7 +322,7 @@ const hotSettings = computed(() => ({
                 callback(error === null);
             }
         }
-    }),
+    }) : [],
     comments: true,
     copyPaste: true,
     manualRowMove: permissions.row.sortable,

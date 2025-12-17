@@ -233,7 +233,7 @@ const fetchSplitTables = async () => {
       // 转换splitData为前端需要的表格格式
       splitTables.value = response.splitData.map((table, index) => {
         // 获取对应索引的链接码，如果没有则使用空字符串
-        const linkCode = tableLinks[index] || '';
+        const linkCode = tableLinks[index]?.code || '';
         
         return {
           id: index + 1,

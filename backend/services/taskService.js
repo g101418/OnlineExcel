@@ -181,7 +181,12 @@ exports.getTaskData = (taskId, callback) => {
 
 // 获取表格填报数据
 exports.getTaskFillingData = (linkCode, callback) => {
-  const sql = `SELECT * FROM table_fillings WHERE filling_task_id = ?`;
+  const sql = `
+    SELECT tf.*, t.taskId, t.taskName, t.taskDeadline, t.uploadedHeaders, t.permissions 
+    FROM table_fillings tf 
+    JOIN tasks t ON tf.original_task_id = t.taskId 
+    WHERE tf.filling_task_id = ?
+  `;
   db.get(sql, [linkCode], (err, fillingTask) => {
     if (err) {
       return callback(err);
@@ -194,8 +199,23 @@ exports.getTaskFillingData = (linkCode, callback) => {
     // 解析JSON数据
     fillingTask.original_table_data = JSON.parse(fillingTask.original_table_data);
     fillingTask.modified_table_data = JSON.parse(fillingTask.modified_table_data);
+    const uploadedHeaders = JSON.parse(fillingTask.uploadedHeaders);
+    const permissions = JSON.parse(fillingTask.permissions);
     
-    callback(null, fillingTask);
+    // 构建返回数据
+    const responseData = {
+      taskId: fillingTask.taskId,
+      taskName: fillingTask.taskName,
+      taskDeadline: fillingTask.taskDeadline,
+      headers: uploadedHeaders, // 表头数据
+      tableData: fillingTask.modified_table_data || fillingTask.original_table_data, // 表格内容数据
+      permissions: permissions, // 权限与校验规则
+      fillingTaskId: fillingTask.filling_task_id,
+      fillingTaskName: fillingTask.filling_task_name,
+      originalTaskId: fillingTask.original_task_id,
+      fillingStatus: fillingTask.filling_status
+    };
+    callback(null, responseData);
   });
 };
 
