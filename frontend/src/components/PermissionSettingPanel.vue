@@ -87,11 +87,8 @@
                 <el-option label="无限制" value="" />
                 <el-option label="yyyy年mm月dd日" value="yyyy年mm月dd日" />
                 <el-option label="yyyy-mm-dd" value="yyyy-mm-dd" />
-                <el-option label="yy-mm-dd" value="yy-mm-dd" />
                 <el-option label="yyyy/mm/dd" value="yyyy/mm/dd" />
-                <el-option label="yy/mm/dd" value="yy/mm/dd" />
                 <el-option label="yyyy.mm.dd" value="yyyy.mm.dd" />
-                <el-option label="yy.mm.dd" value="yy.mm.dd" />
               </el-select>
             </div>
             <div class="date-range">

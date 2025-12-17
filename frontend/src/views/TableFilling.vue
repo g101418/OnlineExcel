@@ -212,19 +212,19 @@ const permissionTooltipContent = computed(() => {
                 // 范围限制
                 if (validation.min !== null && validation.max !== null) {
                     if (validation.type === 'date') {
-                        permissionsList.push(`日期范围：${validation.min} 至 ${validation.max}`)
+                        permissionsList.push(`日期范围：${validation.min.split('T')[0]} 至 ${validation.max.split('T')[0]}`)
                     } else {
                         permissionsList.push(`数值范围：${validation.min} 至 ${validation.max}`)
                     }
                 } else if (validation.min !== null) {
                     if (validation.type === 'date') {
-                        permissionsList.push(`日期最小值：${validation.min}`)
+                        permissionsList.push(`日期最小值：${validation.min.split('T')[0]}`)
                     } else {
                         permissionsList.push(`最小值：${validation.min}`)
                     }
                 } else if (validation.max !== null) {
                     if (validation.type === 'date') {
-                        permissionsList.push(`日期最大值：${validation.max}`)
+                        permissionsList.push(`日期最大值：${validation.max.split('T')[0]}`)
                     } else {
                         permissionsList.push(`最大值：${validation.max}`)
                     }
@@ -284,7 +284,7 @@ const validationErrorCount = computed(() => Object.keys(errors.value).length)
 // ======================
 function getValidationError(value: any, perm: any): string | null {
     if (!perm) return null
-    const v = value == null ? '' : String(value).trim()
+    let v = value == null ? '' : String(value).trim()
     const { required, validation = {} } = perm
     const { type, min, max, isInteger, options, regex, maxLength } = validation
 
@@ -310,20 +310,11 @@ function getValidationError(value: any, perm: any): string | null {
                 case 'yyyy-mm-dd':
                     regex = /^\d{4}-\d{2}-\d{2}$/
                     break
-                case 'yy-mm-dd':
-                    regex = /^\d{2}-\d{2}-\d{2}$/
-                    break
                 case 'yyyy/mm/dd':
                     regex = /^\d{4}\/\d{2}\/\d{2}$/
                     break
-                case 'yy/mm/dd':
-                    regex = /^\d{2}\/\d{2}\/\d{2}$/
-                    break
                 case 'yyyy.mm.dd':
                     regex = /^\d{4}\.\d{2}\.\d{2}$/
-                    break
-                case 'yy.mm.dd':
-                    regex = /^\d{2}\.\d{2}\.\d{2}$/
                     break
                 case 'yyyy年mm月dd日':
                     regex = /^\d{4}年\d{2}月\d{2}日$/
@@ -331,11 +322,22 @@ function getValidationError(value: any, perm: any): string | null {
                 default:
                     return '不支持的日期格式'
             }
+
             if (!regex.test(v)) return `日期格式必须为 ${format}`
         }
 
+        if (format === 'yyyy年mm月dd日') {
+            const match = v.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+            const [, year, month, day] = match;
+            // 拼接为YYYY-MM-DD（月份补零，确保两位）
+            v = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        
         // 然后验证日期有效性和范围
         const d = new Date(v)
+
+        
+
         if (isNaN(d.getTime())) return '日期格式不正确'
         if (min && d < new Date(min)) { return `不能早于 ${new Date(min).toLocaleDateString()}`; }
         if (max && d > new Date(max)) return `不能晚于 ${new Date(max).toLocaleDateString()}`

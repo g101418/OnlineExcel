@@ -204,15 +204,12 @@ exports.getTaskFillingData = (linkCode, callback) => {
     
     // 构建返回数据
     const responseData = {
-      taskId: fillingTask.taskId,
       taskName: fillingTask.taskName,
       taskDeadline: fillingTask.taskDeadline,
       headers: uploadedHeaders, // 表头数据
       tableData: fillingTask.modified_table_data || fillingTask.original_table_data, // 表格内容数据
       permissions: permissions, // 权限与校验规则
-      fillingTaskId: fillingTask.filling_task_id,
-      fillingTaskName: fillingTask.filling_task_name,
-      originalTaskId: fillingTask.original_task_id,
+      taskId: fillingTask.filling_task_id, // 使用filling_task_id作为前端展示的任务ID
       fillingStatus: fillingTask.filling_status
     };
     callback(null, responseData);
