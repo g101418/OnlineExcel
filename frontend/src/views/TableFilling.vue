@@ -21,6 +21,15 @@
                         {{ getDeadlineText() }}
                     </el-tag>
                 </p>
+                <p>
+                    <strong>权限说明：</strong>
+                    <el-tooltip placement="top" effect="light">
+                        <template #content>
+                            <div v-html="permissionTooltipContent"></div>
+                        </template>
+                        <el-icon class="permission-icon"><InfoFilled /></el-icon>
+                    </el-tooltip>
+                </p>
             </div>
             <el-divider v-if="showDivider" />
         </div>
@@ -50,6 +59,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 // ElementPlus
 import { ElMessage, ElTooltip, ElDivider } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 // Handsontable
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
@@ -130,6 +140,115 @@ const permissions = reactive({
         sortable: false
     },
     columns: []
+})
+
+// 权限提示内容
+const permissionTooltipContent = computed(() => {
+    let content = '<div style="max-width: 400px;">'
+    content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">列权限设置：</h4>'
+    content += '<ul style="margin: 0; padding-left: 20px;">'
+    
+    // 如果originalHeaders或permissions.columns为空，显示相应提示
+    if (originalHeaders.value.length === 0) {
+        content += '<li>暂无列权限信息</li>'
+    } else {
+        originalHeaders.value.forEach((header, index) => {
+            const colPermission = permissions.columns[index] || {}
+            content += `<li><strong>${header}：</strong>`
+            
+            // 显示列权限信息
+            const permissionsList = []
+            
+            // 基本权限
+            if (colPermission.editable) permissionsList.push('可编辑')
+            if (colPermission.required) permissionsList.push('必填')
+            
+            // 验证规则
+            const validation = colPermission.validation
+            if (validation) {
+                // 类型转换
+                let typeText = ''
+                switch (validation.type) {
+                    case 'text': typeText = '文本'; break
+                    case 'number': typeText = validation.isInteger ? '整数' : '数字'; break
+                    case 'date': typeText = '日期'; break
+                    case 'options': typeText = '选项'; break
+                    case 'regex': 
+                        if (validation.regexName === '手机号') {
+                            typeText = '手机号'
+                        } else if (validation.regexName) {
+                            typeText = validation.regexName
+                        } else {
+                            typeText = '规定样式'
+                        }
+                        break
+                    default: typeText = validation.type
+                }
+                
+                if (typeText) permissionsList.push(`类型：${typeText}`)
+                
+                // 范围限制
+                if (validation.min !== null && validation.max !== null) {
+                    if (validation.type === 'date') {
+                        permissionsList.push(`日期范围：${validation.min} 至 ${validation.max}`)
+                    } else {
+                        permissionsList.push(`数值范围：${validation.min} 至 ${validation.max}`)
+                    }
+                } else if (validation.min !== null) {
+                    if (validation.type === 'date') {
+                        permissionsList.push(`日期最小值：${validation.min}`)
+                    } else {
+                        permissionsList.push(`最小值：${validation.min}`)
+                    }
+                } else if (validation.max !== null) {
+                    if (validation.type === 'date') {
+                        permissionsList.push(`日期最大值：${validation.max}`)
+                    } else {
+                        permissionsList.push(`最大值：${validation.max}`)
+                    }
+                }
+                
+                // 最大长度
+                if (validation.maxLength) {
+                    permissionsList.push(`最大长度：${validation.maxLength}`)
+                }
+                
+                // 选项
+                if (validation.options && Array.isArray(validation.options)) {
+                    permissionsList.push(`选项：${validation.options.join(' / ')}`)
+                }
+                
+                // 日期格式
+                if (validation.format && validation.type === 'date') {
+                    permissionsList.push(`日期格式：${validation.format}`)
+                }
+            }
+            
+            if (permissionsList.length > 0) {
+                content += permissionsList.join('，')
+            } else {
+                content += '仅可读'
+            }
+            
+            content += '</li>'
+        })
+    }
+    
+    content += '</ul>'
+    
+    // 显示行权限信息
+    content += '<h4 style="margin-top: 12px; margin-bottom: 8px; font-size: 14px;">行权限设置：</h4>'
+    content += '<ul style="margin: 0; padding-left: 20px;">'
+    if (permissions.row.addable) content += '<li>可添加行</li>'
+    if (permissions.row.deletable) content += '<li>可删除行</li>'
+    if (permissions.row.sortable) content += '<li>可调整行顺序</li>'
+    if (!permissions.row.addable && !permissions.row.deletable && !permissions.row.sortable) {
+        content += '<li>行不可编辑</li>'
+    }
+    content += '</ul>'
+    
+    content += '</div>'
+    return content
 })
 
 // ======================
@@ -481,6 +600,13 @@ onMounted(() => {
                 &:hover {
                     text-decoration: underline;
                 }
+            }
+
+            .permission-icon {
+                cursor: pointer;
+                color: #409eff;
+                margin-left: 4px;
+                font-size: 16px;
             }
         }
     }
