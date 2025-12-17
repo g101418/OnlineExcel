@@ -14,7 +14,8 @@ exports.saveTask = (taskData, callback) => {
     header,
     splitData,
     permissions,
-    tableLinks = []
+    tableLinks = [],
+    formDescription = ''
   } = taskData;
 
   // 先检查taskId是否已经存在
@@ -34,7 +35,7 @@ exports.saveTask = (taskData, callback) => {
         taskName = ?, taskDeadline = ?, fileName = ?, uploadedHeaders = ?, uploadedData = ?, 
         selectedHeader = ?, split = ?, header = ?, 
         splitData = ?, permissions = ?, tableLinks = ?, 
-        updateTime = ?, splitEnabled = ?, permissionPanelCollapsed = ?, progress = ? 
+        updateTime = ?, splitEnabled = ?, permissionPanelCollapsed = ?, progress = ?, formDescription = ? 
         WHERE taskId = ?`;
       
       params = [
@@ -53,6 +54,7 @@ exports.saveTask = (taskData, callback) => {
         taskData.splitEnabled || false,
         taskData.permissionPanelCollapsed || false,
         taskData.progress || 'generation',
+        formDescription,
         taskId
       ];
     } else {
@@ -61,8 +63,8 @@ exports.saveTask = (taskData, callback) => {
         taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
         selectedHeader, split, header, 
         splitData, permissions, tableLinks,
-        updateTime, splitEnabled, permissionPanelCollapsed, progress
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        updateTime, splitEnabled, permissionPanelCollapsed, progress, formDescription
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
       
       params = [
         taskId,
@@ -80,7 +82,8 @@ exports.saveTask = (taskData, callback) => {
         JSON.stringify(taskData.updateTime || new Date().toISOString()),
         taskData.splitEnabled || false,
         taskData.permissionPanelCollapsed || false,
-        taskData.progress || 'generation'
+        taskData.progress || 'generation',
+        formDescription
       ];
     }
     
@@ -182,7 +185,7 @@ exports.getTaskData = (taskId, callback) => {
 // 获取表格填报数据
 exports.getTaskFillingData = (linkCode, callback) => {
   const sql = `
-    SELECT tf.*, t.taskId, t.taskName, t.taskDeadline, t.uploadedHeaders, t.permissions 
+    SELECT tf.*, t.taskId, t.taskName, t.taskDeadline, t.uploadedHeaders, t.permissions, t.formDescription 
     FROM table_fillings tf 
     JOIN tasks t ON tf.original_task_id = t.taskId 
     WHERE tf.filling_task_id = ?
@@ -210,7 +213,8 @@ exports.getTaskFillingData = (linkCode, callback) => {
       tableData: fillingTask.modified_table_data || fillingTask.original_table_data, // 表格内容数据
       permissions: permissions, // 权限与校验规则
       taskId: fillingTask.filling_task_id, // 使用filling_task_id作为前端展示的任务ID
-      fillingStatus: fillingTask.filling_status
+      fillingStatus: fillingTask.filling_status,
+      formDescription: fillingTask.formDescription || ''
     };
     callback(null, responseData);
   });

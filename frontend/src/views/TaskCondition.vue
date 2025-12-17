@@ -22,6 +22,15 @@
               </el-form-item>
             </el-col>
           </el-row>
+          <el-row>
+            <el-col :span="24">
+              <el-form-item label="填表说明" prop="formDescription"
+                :rules="[{ max: 1000, message: '填表说明最长1000字', trigger: ['blur', 'submit'] }]">
+                <el-input v-model="taskForm.formDescription" placeholder="请输入填表说明（选填）" maxlength="1000" show-word-limit
+                  type="textarea" :autosize="{ minRows: 1, maxRows: 5 }" style="width: 70%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
         </el-form>
       </div>
 
@@ -138,7 +147,8 @@ const currentTable = ref({});
 // 任务表单数据
 const taskForm = reactive({
   taskName: '',
-  taskDeadline: null
+  taskDeadline: null,
+  formDescription: ''
 });
 
 // 日期禁用规则：从第二天开始，最长3周
@@ -349,11 +359,12 @@ const saveSettingsAndRelease = async () => {
       // 准备发送到服务端的数据
       const taskData = {
         // 任务基本信息
-        taskId: taskId.value,
-        fileName: fileName.value,
-        taskName: taskForm.taskName,
-        taskDeadline: taskForm.taskDeadline,
-        updateTime: currentTask.value?.updateTime || new Date().toISOString(),
+      taskId: taskId.value,
+      fileName: fileName.value,
+      taskName: taskForm.taskName,
+      taskDeadline: taskForm.taskDeadline,
+      formDescription: taskForm.formDescription,
+      updateTime: currentTask.value?.updateTime || new Date().toISOString(),
         
         // 上传的数据
         uploadedHeaders: currentTask.value?.uploadedHeaders || [],
@@ -424,6 +435,7 @@ onMounted(() => {
       // 4. 加载任务表单数据
       taskForm.taskName = task.taskName || '';
       taskForm.taskDeadline = task.taskDeadline || null;
+      taskForm.formDescription = task.formDescription || '';
 
     } else {
 
@@ -460,6 +472,16 @@ watch(
   (newDeadline) => {
     if (taskId.value) {
       store.setTaskDeadline(taskId.value, newDeadline);
+    }
+  }
+);
+
+// 监听填表说明变化，实时保存到store
+watch(
+  () => taskForm.formDescription,
+  (newDescription) => {
+    if (taskId.value) {
+      store.setFormDescription(taskId.value, newDescription);
     }
   }
 );

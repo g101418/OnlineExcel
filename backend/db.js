@@ -27,6 +27,7 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       permissionPanelCollapsed BOOLEAN DEFAULT FALSE,
       progress TEXT DEFAULT 'generation',
       status TEXT DEFAULT 'draft',
+      formDescription TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
@@ -44,7 +45,8 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       `ADD COLUMN updateTime TEXT`,
       `ADD COLUMN splitEnabled BOOLEAN DEFAULT FALSE`,
       `ADD COLUMN permissionPanelCollapsed BOOLEAN DEFAULT FALSE`,
-      `ADD COLUMN progress TEXT DEFAULT 'generation'`
+      `ADD COLUMN progress TEXT DEFAULT 'generation'`,
+      `ADD COLUMN formDescription TEXT DEFAULT ''`
     ];
     
     alterColumns.forEach((alterStmt, index) => {

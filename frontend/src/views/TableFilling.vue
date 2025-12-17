@@ -22,6 +22,17 @@
                     </el-tag>
                 </p>
                 <p>
+                    <strong>填表说明：</strong>
+                    <el-tooltip placement="top" effect="light">
+                        <template #content>
+                            <div style="white-space: pre-wrap;">{{ taskInfo.formDescription || '暂无填表说明' }}</div>
+                        </template>
+                        <el-icon class="permission-icon">
+                            <InfoFilled />
+                        </el-icon>
+                    </el-tooltip>
+                </p>
+                <p>
                     <strong>权限说明：</strong>
                     <el-tooltip placement="top" effect="light">
                         <template #content>
@@ -109,7 +120,8 @@ const taskInfo = reactive({
     taskId: '',
     taskName: '',
     taskDeadline: '',
-    fillingStatus: ''
+    fillingStatus: '',
+    formDescription: ''
 })
 
 // 任务信息配置
@@ -373,6 +385,7 @@ const fetchTableData = async () => {
         taskInfo.taskName = response.taskName || ''
         taskInfo.taskDeadline = response.taskDeadline || ''
         taskInfo.fillingStatus = response.fillingStatus || ''
+        taskInfo.formDescription = response.formDescription || ''
 
         // 设置表格数据
         originalHeaders.value = response.headers || []

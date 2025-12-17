@@ -4,7 +4,7 @@ const taskService = require('../services/taskService');
 const saveTask = (req, res) => {
   const taskData = req.body;
   
-  if (!taskData.taskId || !taskData.taskName || !taskData.fileName || !taskData.uploadedHeaders || !taskData.uploadedData || !taskData.splitData || !taskData.permissions) {
+  if (!taskData.taskId || !taskData.taskName || !taskData.fileName || !taskData.uploadedHeaders || !taskData.uploadedData || !taskData.permissions) {
     return res.status(400).json({ error: 'Required fields are missing' });
   }
   
