@@ -5,7 +5,7 @@
         <img :src="logo" alt="logo" class="logo" />
       </div>
 
-      <h1 class="title">在线表格处理工具</h1>
+      <h1 class="title">在线表格填报工具</h1>
       <p class="desc">将大型表格拆分为多个可管理的任务，支持批量生成与下载。</p>
 
       <el-button class="start-btn" size="large" type="primary" @click="openUploadDialog">

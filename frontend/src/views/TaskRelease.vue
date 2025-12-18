@@ -5,7 +5,14 @@
     <!-- 显示表格列表 -->
     <div v-if="isTaskValid && splitTables.length > 0" class="tables-container">
       <div class="table-header">
-        <h3>表格列表</h3>
+        <div class="title-container">
+          <h3>表格列表</h3>
+          <div class="status-info">
+            <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
+            <el-tag v-else type="danger">已超期</el-tag>
+            <span v-if="currentTask?.taskDeadline" class="deadline">截止时间: {{ formatDate(currentTask?.taskDeadline) }}</span>
+          </div>
+        </div>
         <div class="header-buttons">
           <el-button type="primary" @click="exportAllLinks">一键导出链接</el-button>
           <el-button :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
@@ -30,7 +37,8 @@
             <el-tag v-else type="danger">{{ scope.row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200">
+
+        <el-table-column label="操作" width="250">
           <template #default="scope">
             <el-button 
               v-if="scope.row.status === '已上传'" 
@@ -47,6 +55,14 @@
               @click="rejectTable(scope.row)"
             >
               退回
+            </el-button>
+            <el-button 
+              v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" 
+              type="warning" 
+              size="small"
+              @click="exemptSubTask(scope.row)"
+            >
+              逾期豁免
             </el-button>
           </template>
         </el-table-column>
@@ -94,7 +110,7 @@ import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore, saveState } from "../stores/task";
 import * as XLSX from "xlsx";
 // 导入API
-import { getTaskReleaseData, getTaskData, deleteTask, getSubTaskStatuses, getTableData, withdrawTable } from "../api/task";
+import { getTaskReleaseData, getTaskData, deleteTask, getSubTaskStatuses, getTableData, withdrawTable, overdueExemption, checkTaskOverdue, checkSubTaskOverdue } from "../api/task";
 
 const router = useRouter();
 const route = useRoute();
@@ -137,6 +153,19 @@ const tableHeaders = ref([]);
 const shortenLink = (code) => {
   if (!code) return '';
   return `http://...link=${code}`;
+};
+
+// 格式化日期
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 // 复制链接
@@ -284,6 +313,19 @@ const rejectTable = async (table) => {
   } catch (error) {
     console.error("退回表格失败:", error);
     ElMessage.error("退回表格失败，请稍后重试");
+  }
+};
+
+// 逾期豁免
+const exemptSubTask = async (table) => {
+  try {
+    await overdueExemption(table.code);
+    // 更新本地表格数据的豁免状态
+    table.overduePermission = true;
+    ElMessage.success("已豁免该子任务");
+  } catch (error) {
+    console.error("逾期豁免失败:", error);
+    ElMessage.error("逾期豁免失败，请稍后重试");
   }
 };
 
@@ -464,6 +506,9 @@ const fetchSplitTables = async () => {
     // 确保tableLinks存在且为数组
     const tableLinks = response.tableLinks || [];
     
+    // 获取任务状态（从当前任务数据或直接调用API）
+    const taskStatus = currentTask.value?.status || 'draft';
+    
     // 转换splitData为前端需要的表格格式
     splitTables.value = response.splitData.map((table, index) => {
       // 获取对应索引的链接码，如果没有则使用空字符串
@@ -475,6 +520,8 @@ const fetchSplitTables = async () => {
         rowCount: table.data ? table.data.length : 0,
         code: linkCode,
         status: '未上传',
+        taskStatus: taskStatus, // 任务状态
+        overduePermission: false, // 默认未豁免
         originalData: table
       };
     });
@@ -500,6 +547,18 @@ const fetchSplitTables = async () => {
               table.status = '未上传';
               break;
           }
+        }
+      });
+    }
+    
+    // 查询子任务的豁免情况
+    const taskOverdueInfo = await checkTaskOverdue(route.query.taskId as string);
+    if (taskOverdueInfo && taskOverdueInfo.overdueStatus) {
+      // 更新每个表格的豁免状态
+      splitTables.value.forEach(table => {
+        const overdueInfo = taskOverdueInfo.overdueStatus.find(item => item.filling_task_id === table.code);
+        if (overdueInfo) {
+          table.overduePermission = overdueInfo.overdue_permission;
         }
       });
     }
@@ -542,6 +601,24 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
+}
+
+.title-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.status-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.deadline {
+  padding: 5px 0;
 }
 
 .table-header h3 {

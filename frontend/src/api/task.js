@@ -203,3 +203,45 @@ export const checkIdExists = async (id) => {
     throw error;
   }
 };
+
+/**
+ * 对子任务进行逾期豁免
+ * @param {string} linkCode - 子任务链接码
+ * @returns {Promise<Object>} - 返回豁免结果
+ */
+export const overdueExemption = async (linkCode) => {
+  try {
+    return await post(`/table-filling/overdue_exemption/${linkCode}`);
+  } catch (error) {
+    console.error("子任务逾期豁免出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 查询任务所有子任务的豁免情况
+ * @param {string} taskId - 任务ID
+ * @returns {Promise<Object>} - 返回子任务豁免情况列表
+ */
+export const checkTaskOverdue = async (taskId) => {
+  try {
+    return await get(`/task/check_overdue/${taskId}`);
+  } catch (error) {
+    console.error("查询任务子任务豁免情况出错:", error);
+    throw error;
+  }
+};
+
+/**
+ * 查询单个子任务的豁免情况
+ * @param {string} linkCode - 子任务链接码
+ * @returns {Promise<Object>} - 返回子任务豁免情况
+ */
+export const checkSubTaskOverdue = async (linkCode) => {
+  try {
+    return await get(`/table-filling/check_overdue/${linkCode}`);
+  } catch (error) {
+    console.error("查询子任务豁免情况出错:", error);
+    throw error;
+  }
+};

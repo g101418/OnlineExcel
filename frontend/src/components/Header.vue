@@ -3,7 +3,7 @@
     <div class="container">
       <router-link to="/" class="brand">
         <img :src="logo" alt="logo" class="logo" />
-        <span class="app-title">在线表格处理工具</span>
+        <span class="app-title">在线表格填报工具</span>
       </router-link>
       <div class="header-spacer"></div>
     </div>

@@ -263,6 +263,45 @@ const checkIdExists = (req, res) => {
   });
 };
 
+// 14. 对子任务进行逾期豁免
+const overdueExemption = (req, res) => {
+  const linkCode = req.params.linkCode;
+  
+  taskService.overdueExemption(linkCode, (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    res.status(200).json(result);
+  });
+};
+
+// 15. 查询任务的所有子任务是否被豁免
+const checkTaskOverdue = (req, res) => {
+  const taskId = req.params.taskId;
+  
+  taskService.checkTaskOverdue(taskId, (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    res.status(200).json(result);
+  });
+};
+
+// 16. 查询单个子项目的豁免情况
+const checkSubTaskOverdue = (req, res) => {
+  const linkCode = req.params.linkCode;
+  
+  taskService.checkSubTaskOverdue(linkCode, (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    
+    res.status(200).json(result);
+  });
+};
+
 module.exports = {
   saveTask,
   getTaskReleaseData,
@@ -278,5 +317,8 @@ module.exports = {
   withdrawTable,
   getSubTaskStatuses,
   restoreTable,
-  checkIdExists
+  checkIdExists,
+  overdueExemption,
+  checkTaskOverdue,
+  checkSubTaskOverdue
 };
