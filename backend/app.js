@@ -29,14 +29,14 @@ app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 app.use(limiter);
 
 // 静态文件服务 - 提供前端打包后的文件
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+app.use(express.static(path.join(__dirname, './dist')));
 
 // 引入路由
 app.use('/api', taskRoutes);
 
 // 处理前端路由的历史模式刷新问题
 app.get(/^(?!\/api).+/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+  res.sendFile(path.join(__dirname, './dist/index.html'));
 });
 
 // 服务器启动
