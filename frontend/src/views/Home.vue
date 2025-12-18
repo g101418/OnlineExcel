@@ -314,12 +314,12 @@ const clearHistory = async () => {
 };
 
 // 加载历史表格数据
-const loadHistoricalData = () => {
+const loadHistoricalData = async () => {
   // 清空当前历史记录
   historicalTables.value = [];
 
   // 遍历store中的所有任务
-  store.tasks.forEach(task => {
+  for (const task of store.tasks) {
     // 计算数据大小
     const dataSize = calculateDataSize(task.uploadedHeaders, task.uploadedData);
 
@@ -333,26 +333,40 @@ const loadHistoricalData = () => {
       progress: task.progress
     };
 
-    // 添加到历史记录列表
-    historicalTables.value.push(historicalItem);
-  });
+    // 如果任务状态是已发布，需要检测是否存在
+    if (task.progress === 'release') {
+      try {
+        // 调用API检查任务是否存在
+        await checkIdExists(task.taskId);
+        // 任务存在，添加到历史记录列表
+        historicalTables.value.push(historicalItem);
+      } catch (error) {
+        // 任务不存在，从本地删除
+        console.log(`任务 ${task.taskId} 不存在，从本地删除`);
+        store.deleteTask(task.taskId);
+      }
+    } else {
+      // 非已发布任务，直接添加到历史记录列表
+      historicalTables.value.push(historicalItem);
+    }
+  }
 };
 
 // 页面加载时加载历史表格数据
-onMounted(() => {
-  loadHistoricalData();
+onMounted(async () => {
+  await loadHistoricalData();
 });
 
 // 当组件被激活时重新加载历史数据（用于从其他页面返回时更新状态）
-onActivated(() => {
-  loadHistoricalData();
+onActivated(async () => {
+  await loadHistoricalData();
 });
 
 // 监听store.tasks的变化，当任务列表变化时重新加载历史数据
 watch(
   () => store.tasks,
-  () => {
-    loadHistoricalData();
+  async () => {
+    await loadHistoricalData();
   },
   { deep: true }
 );
