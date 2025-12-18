@@ -22,6 +22,7 @@
       </div>
 
       <el-table :data="splitTablesWithLinks" style="width: 100%">
+        <el-table-column type="index" label="序号" width="70" />
         <el-table-column prop="name" label="表格名称" width="200" />
         <el-table-column prop="rowCount" label="行数" width="100" />
         <el-table-column label="链接" min-width="200">
@@ -448,12 +449,12 @@ const fetchSplitTables = async () => {
     // 将服务端返回的数据保存到本地store
     const existingTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
     if (existingTaskIndex !== -1) {
-      // 如果任务已存在，使用服务端数据完全替换本地任务数据
+      // 如果任务已存在，使用服务端数据更新本地任务数据
       // 只保留本地的权限设置，其他所有数据都从服务端获取
       const existingTask = store.tasks[existingTaskIndex];
       const localPermissions = existingTask.permissions;
 
-      // 使用服务端数据完全覆盖本地任务数据
+      // 确保我们使用的是处理后的splitData，而不是直接使用服务端返回的splitData
       const updatedTask = {
         ...response,
         // 保留本地的权限设置
@@ -474,7 +475,7 @@ const fetchSplitTables = async () => {
       // 找到新创建的任务索引
       const newTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
       if (newTaskIndex !== -1) {
-        // 使用服务端数据完全替换新创建的任务
+        // 确保我们使用的是处理后的splitData，而不是直接使用服务端返回的splitData
         store.tasks[newTaskIndex] = {
           ...response,
           updateTime: new Date().toLocaleString('zh-CN') // 更新时间
