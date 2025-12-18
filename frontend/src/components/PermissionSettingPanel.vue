@@ -176,6 +176,17 @@ const regexPresets = ref({
   url: { pattern: /^https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$/, name: '网址' }
 });
 
+const getEmptyValidation = () => ({
+  type: "",
+  min: null,
+  max: null,
+  maxLength: null,
+  options: [],
+  isInteger: false,
+  regex: "",
+  regexName: "",
+  format: ""
+});
 // 初始化列数据
 const initColumns = () => {
   // 确保taskId存在
@@ -191,28 +202,18 @@ const initColumns = () => {
     localColumns.value = uploadedHeaders.value.map((h, index) => {
       // 检查是否是拆分字段列
       const isSplitColumn = split.value && header.value && h === header.value;
-
+      
       return {
-          label: h,
-          prop: h,
-          // 根据用户需求设置默认可编辑状态
-          // 不拆分时：所有列默认可编辑
-          // 拆分时：拆分列默认不可编辑，其他列默认可编辑
-          editable: !isSplitColumn,
-          // 拆分时：拆分列默认必填
-          required: isSplitColumn,
-          validation: {
-            type: "",
-            min: null,
-            max: null,
-            maxLength: null,
-            options: [],
-            isInteger: false,
-            regex: "",
-            regexName: "",
-            format: "" // 设置默认日期格式为无限制（空字符串）
-          },
-        };
+        label: h,
+        prop: h,
+        // 根据用户需求设置默认可编辑状态
+        // 不拆分时：所有列默认可编辑
+        // 拆分时：拆分列默认不可编辑，其他列默认可编辑
+        editable: !isSplitColumn,
+        // 拆分时：拆分列默认必填
+        required: isSplitColumn,
+        validation: getEmptyValidation(),
+      };
     });
   }
 
@@ -222,19 +223,20 @@ const initColumns = () => {
     localColumns.value = currentTask.value.permissions.columns.map(column => {
       // 检查是否是拆分字段列
       const isSplitColumn = split.value && header.value && column.label === header.value;
-      
+
       // 应用新的默认逻辑
       // 不拆分时：所有列默认可编辑
       // 拆分时：拆分列默认不可编辑，其他列默认可编辑
-      // 如果是拆分列，确保其不可编辑且必填
+      // 如果是拆分列，确保其不可编辑且必填，并重置验证规则
       if (isSplitColumn) {
         column.editable = false;
         column.required = true;
+        column.validation = getEmptyValidation();
       } else {
         // 非拆分列默认可编辑
         column.editable = true;
       }
-      
+
       if (column.validation && column.validation.type === 'options') {
         // 如果options是字符串类型，转换为数组
         if (typeof column.validation.options === 'string') {
@@ -248,7 +250,7 @@ const initColumns = () => {
       }
       return column;
     });
-    
+
     // 更新store中的权限以确保它们符合新的默认值
     store.setColumnPermissions(taskId.value, localColumns.value);
   } else if (localColumns.value.length > 0 && currentTask.value) {
@@ -316,6 +318,11 @@ watch(() => rowPermissions.value, (newRowPermissions) => {
       store.setRowPermissions(taskId.value, newRowPermissions);
     }
   }
+}, { deep: true });
+
+// 监听split和header变化，当列变为拆分列时重新初始化权限
+watch([split, header], () => {
+  initColumns();
 }, { deep: true });
 
 // 组件挂载时初始化
