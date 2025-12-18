@@ -200,35 +200,38 @@ const fetchSplitTables = async () => {
     }
 
     // 不拆分的情况：直接使用完整数据作为一个表格
-    if (!split.value) {
-      const headers = currentTask.value.uploadedHeaders;
-      const data = currentTask.value.uploadedData;
+      if (!split.value) {
+        const headers = currentTask.value.uploadedHeaders;
+        const data = currentTask.value.uploadedData;
 
-      if (headers.length > 0 && data.length > 0) {
-        // 将二维数组转换为对象数组
-        const formattedData = data.map(row => {
-          const obj = {};
-          headers.forEach((hd, idx) => {
-            obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+        if (headers.length > 0 && data.length > 0) {
+          // 将二维数组转换为对象数组
+          const formattedData = data.map(row => {
+            const obj = {};
+            headers.forEach((hd, idx) => {
+              obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+            });
+            return obj;
           });
-          return obj;
-        });
 
-        splitTables.value = [{
-          name: fileName.value || "未命名表格",
-          rowCount: data.length,
-          data: formattedData,
-          columns: headers.map(header => ({
-            prop: header,
-            label: header,
-            width: 120
-          }))
-        }];
-      } else {
-        splitTables.value = [];
+          // 不拆分时：默认显示所有列
+          const columnsToShow = headers;
+          
+          splitTables.value = [{
+            name: fileName.value || "未命名表格",
+            rowCount: data.length,
+            data: formattedData,
+            columns: columnsToShow.map(header => ({
+              prop: header,
+              label: header,
+              width: 120
+            }))
+          }];
+        } else {
+          splitTables.value = [];
+        }
+        return;
       }
-      return;
-    }
 
     // 拆分的情况：使用拆分后的数据
     if (!header.value) {
@@ -248,13 +251,18 @@ const fetchSplitTables = async () => {
           return obj;
         });
 
+        // 根据用户需求设置列显示
+        // 拆分时：默认只显示拆分列
+        // 不拆分时：默认显示所有列
+        const columnsToShow = split.value ? [header.value] : item.headers;
+        
         return {
           name: item.sheetName,
           rowCount: item.data.length,
           data: formattedData,
-          columns: item.headers.map(header => ({
-            prop: header, // 使用实际的表头名称作为prop
-            label: header,
+          columns: columnsToShow.map(colHeader => ({
+            prop: colHeader, // 使用实际的表头名称作为prop
+            label: colHeader,
             width: 120
           }))
         };

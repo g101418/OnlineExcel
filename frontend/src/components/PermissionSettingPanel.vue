@@ -193,30 +193,48 @@ const initColumns = () => {
       const isSplitColumn = split.value && header.value && h === header.value;
 
       return {
-        label: h,
-        prop: h,
-        // 默认拆分表的拆分字段列不允许编辑；默认非拆分表的第一列不允许编辑
-        editable: !(isSplitColumn || (!split.value && index === 0)),
-        required: false,
-        validation: {
-          type: "",
-          min: null,
-          max: null,
-          maxLength: null,
-          options: [],
-          isInteger: false,
-          regex: "",
-          regexName: "",
-          format: "" // 设置默认日期格式为无限制（空字符串）
-        },
-      };
+          label: h,
+          prop: h,
+          // 根据用户需求设置默认可编辑状态
+          // 不拆分时：所有列默认可编辑
+          // 拆分时：拆分列默认不可编辑，其他列默认可编辑
+          editable: !isSplitColumn,
+          // 拆分时：拆分列默认必填
+          required: isSplitColumn,
+          validation: {
+            type: "",
+            min: null,
+            max: null,
+            maxLength: null,
+            options: [],
+            isInteger: false,
+            regex: "",
+            regexName: "",
+            format: "" // 设置默认日期格式为无限制（空字符串）
+          },
+        };
     });
   }
 
-  // 如果store中有权限设置，应用到columns
+  // 如果store中有权限设置，应用到columns并确保正确的默认值
   if (currentTask.value?.permissions?.columns?.length > 0) {
-    // 确保options是数组类型
+    // 确保options是数组类型并应用新的默认逻辑
     localColumns.value = currentTask.value.permissions.columns.map(column => {
+      // 检查是否是拆分字段列
+      const isSplitColumn = split.value && header.value && column.label === header.value;
+      
+      // 应用新的默认逻辑
+      // 不拆分时：所有列默认可编辑
+      // 拆分时：拆分列默认不可编辑，其他列默认可编辑
+      // 如果是拆分列，确保其不可编辑且必填
+      if (isSplitColumn) {
+        column.editable = false;
+        column.required = true;
+      } else {
+        // 非拆分列默认可编辑
+        column.editable = true;
+      }
+      
       if (column.validation && column.validation.type === 'options') {
         // 如果options是字符串类型，转换为数组
         if (typeof column.validation.options === 'string') {
@@ -230,6 +248,9 @@ const initColumns = () => {
       }
       return column;
     });
+    
+    // 更新store中的权限以确保它们符合新的默认值
+    store.setColumnPermissions(taskId.value, localColumns.value);
   } else if (localColumns.value.length > 0 && currentTask.value) {
     // 如果没有已有的权限设置，将默认的列权限保存到store
     store.setColumnPermissions(taskId.value, localColumns.value);
