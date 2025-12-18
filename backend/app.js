@@ -3,9 +3,10 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const rateLimit = require('express-rate-limit');
 const taskRoutes = require('./routes/taskRoutes');
+const path = require('path');
 
 const app = express();
-const PORT = 3000;
+const PORT = 5090;
 
 // 限流配置 - 可根据需要调整
 const RATE_LIMIT_CONFIG = {
@@ -27,10 +28,18 @@ app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 // 应用限流中间件
 app.use(limiter);
 
+// 静态文件服务 - 提供前端打包后的文件
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
 // 引入路由
 app.use('/api', taskRoutes);
 
+// 处理前端路由的历史模式刷新问题
+app.get(/^(?!\/api).+/, (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
+
 // 服务器启动
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });
