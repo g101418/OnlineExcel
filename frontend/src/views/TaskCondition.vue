@@ -74,7 +74,7 @@
   </div>
 
   <!-- 临时权限展示区域 -->
-  <div class="permission-display">
+  <div class="permission-display" v-if="false">
     <h4>当前权限设置</h4>
     <!-- 使用专门的计算属性来展示权限数据 -->
     <pre>{{ JSON.stringify(displayedPermissions, null, 2) }}</pre>
