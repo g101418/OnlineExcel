@@ -38,37 +38,6 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       }
     });
     
-    // 为已存在的表添加缺失的字段
-    const alterColumns = [
-      `ADD COLUMN taskName TEXT NOT NULL DEFAULT ''`,
-      `ADD COLUMN taskDeadline DATETIME`,
-      `ADD COLUMN updateTime TEXT`,
-      `ADD COLUMN splitEnabled BOOLEAN DEFAULT FALSE`,
-      `ADD COLUMN permissionPanelCollapsed BOOLEAN DEFAULT FALSE`,
-      `ADD COLUMN progress TEXT DEFAULT 'generation'`,
-      `ADD COLUMN formDescription TEXT DEFAULT ''`
-    ];
-    
-    alterColumns.forEach((alterStmt, index) => {
-      db.run(`ALTER TABLE tasks ${alterStmt}`, (err) => {
-        if (err) {
-          // 如果是"duplicate column name"错误，忽略它
-          if (!err.message.includes('duplicate column name')) {
-            console.error(err.message);
-          } else {
-            console.log(`Column already exists in tasks table: ${alterStmt}`);
-          }
-        } else {
-          console.log(`Added column to tasks table: ${alterStmt}`);
-        }
-        
-        // 只有当所有ALTER TABLE语句执行完毕后，才开始执行其他操作
-        if (index === alterColumns.length - 1) {
-          // 可以在这里添加其他初始化操作
-        }
-      });
-    });
-    
     // 创建表格填报数据表
     db.run(`CREATE TABLE IF NOT EXISTS table_fillings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,6 +47,7 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       original_table_data JSON NOT NULL DEFAULT '[]',
       modified_table_data JSON NOT NULL DEFAULT '[]',
       filling_status TEXT DEFAULT 'in_progress',
+      overdue_permission BOOLEAN DEFAULT FALSE,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (original_task_id) REFERENCES tasks (taskId)
     )`, (err) => {

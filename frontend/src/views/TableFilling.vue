@@ -62,13 +62,13 @@
         <div class="action-buttons">
             <!-- 暂存按钮：只有在填报中或已退回状态才显示 -->
             <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                @click="handleSaveDraft">
+                @click="handleSaveDraft" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
                 暂存
             </el-button>
 
             <!-- 还原按钮：只有在填报中或已退回状态才可用，与暂存按钮显示逻辑一致 -->
             <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                @click="handleRestore">
+                @click="handleRestore" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
                 还原表格
             </el-button>
 
@@ -77,7 +77,7 @@
                 撤回
             </el-button>
             <el-button v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                type="primary" :disabled="!canSubmit" @click="handleSubmit">
+                type="primary" :disabled="!canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)" @click="handleSubmit">
                 提交
             </el-button>
         </div>
@@ -96,8 +96,8 @@ import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
 import 'handsontable/dist/handsontable.full.css'
-// API
-import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable } from '../api/task'
+// 导入API
+import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable, checkSubTaskOverdue } from '../api/task'
 
 // ======================
 // Handsontable 初始化
@@ -122,6 +122,12 @@ const taskInfo = reactive({
     taskDeadline: '',
     fillingStatus: '',
     formDescription: ''
+})
+
+// 逾期豁免状态
+const overdueInfo = reactive({
+    isOverdue: false,
+    overduePermission: false
 })
 
 // 任务信息配置
@@ -661,8 +667,24 @@ const handleRestore = async () => {
 // ======================
 // 初始化
 // ======================
-onMounted(() => {
-    fetchTableData()
+// ======================
+// 获取逾期豁免状态
+// ======================
+const fetchOverdueStatus = async () => {
+    if (!linkCode.value) return
+    
+    try {
+        const response = await checkSubTaskOverdue(linkCode.value)
+        overdueInfo.isOverdue = response.status === 'overdue'
+        overdueInfo.overduePermission = response.overdue_permission
+    } catch (error) {
+        console.error('获取逾期豁免状态失败:', error)
+    }
+}
+
+onMounted(async () => {
+    await fetchTableData()
+    await fetchOverdueStatus()
 })
 </script>
 

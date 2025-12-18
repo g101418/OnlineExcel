@@ -50,4 +50,13 @@ router.post('/table-filling/restore-table-data/:linkCode', taskController.restor
 // 11. 检查ID是否存在（支持taskid和子任务id查询）
 router.get('/check-id-exists/:id', taskController.checkIdExists);
 
+// 12. 对子任务进行逾期豁免
+router.post('/table-filling/overdue_exemption/:linkCode', taskController.overdueExemption);
+
+// 13. 查询任务的所有子任务是否被豁免
+router.get('/task/check_overdue/:taskId', taskController.checkTaskOverdue);
+
+// 14. 查询单个子项目的豁免情况
+router.get('/table-filling/check_overdue/:linkCode', taskController.checkSubTaskOverdue);
+
 module.exports = router;
