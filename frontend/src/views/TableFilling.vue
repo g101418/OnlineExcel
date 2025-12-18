@@ -160,34 +160,111 @@ const getFillingStatusText = () => {
     if (taskInfo.fillingStatus === 'returned') return '已退回'
     return '填报中'
 }
+// 辅助函数：只提取日期部分 (YYYY/MM/DD)，不显示时间
+const formatDateSimple = (val: string | number | Date) => {
+    if (!val) return ''
+    const d = new Date(val)
+    if (isNaN(d.getTime())) return val // 如果解析失败，原样返回
+    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+
 const permissionTooltipContent = computed(() => {
-    // 保持原有逻辑，省略代码以节省篇幅，建议直接复用之前生成的代码
-    // ...
-    let content = '<div style="max-width: 400px;">'
-    content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px;">列权限设置：</h4>'
-    content += '<ul style="margin: 0; padding-left: 20px;">'
+    const REGEX_LABEL_MAP: Record<string, string> = {
+        'phone': '手机号',
+        'idcard': '身份证号',
+        'email': '邮箱',
+        'url': '网址',
+        'custom': '自定义格式'
+    }
+
+    let content = '<div style="max-width: 450px; line-height: 1.6;">'
+
+    // 1. 列权限部分
+    content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px;">列填报规则：</h4>'
+    content += '<ul style="margin: 0; padding-left: 20px; font-size: 13px;">'
+
     if (originalHeaders.value.length === 0) {
-        content += '<li>暂无列权限信息</li>'
+        content += '<li style="color: #999;">暂无列权限信息</li>'
     } else {
         originalHeaders.value.forEach((header, index) => {
-            const colPermission = permissions.columns[index] || {}
-            content += `<li><strong>${header}：</strong>`
-            const permissionsList = []
-            if (!colPermission.editable) permissionsList.push('不可编辑')
-            if (colPermission.editable) permissionsList.push('可编辑')
-            if (colPermission.required) permissionsList.push('必填')
-            if (permissionsList.length > 0) content += permissionsList.join('，')
-            else content += '仅可读'
-            content += '</li>'
+            const colPerm = permissions.columns[index] || {}
+            const rules = [] // 用于收集该列的所有规则
+
+            // --- 基础权限 ---
+            if (!colPerm.editable) {
+                rules.push('<span style="color: #f56c6c;">不可编辑</span>') // 红色强调
+            } else {
+                rules.push('可编辑')
+            }
+
+            if (colPerm.required) {
+                rules.push('<span style="color: #e6a23c;">必填</span>') // 橙色强调
+            } else if (colPerm.editable) {
+                rules.push('选填')
+            }
+
+            // --- 详细校验规则 ---
+            const v = colPerm.validation || {}
+
+            if (v.type === 'number') {
+                let numDesc = v.isInteger ? '整数' : '数字'
+
+                if (v.min != null && v.max != null) {
+                    numDesc += ` (范围: ${v.min} - ${v.max})`
+                } else if (v.min != null) {
+                    numDesc += ` (最小 ${v.min})`
+                } else if (v.max != null) {
+                    numDesc += ` (最大 ${v.max})`
+                }
+                rules.push(numDesc)
+            }
+            else if (v.type === 'text') {
+                if (v.maxLength) rules.push(`最多 ${v.maxLength} 字符`)
+            }
+            else if (v.type === 'date') {
+                let dateDesc = '日期'
+                if (v.format) dateDesc += ` (格式: ${v.format})`
+
+                const minStr = formatDateSimple(v.min)
+                const maxStr = formatDateSimple(v.max)
+
+                if (minStr && maxStr) {
+                    dateDesc += `，范围: ${minStr} 至 ${maxStr}`
+                } else if (minStr) {
+                    dateDesc += `，最早 ${minStr}`
+                } else if (maxStr) {
+                    dateDesc += `，最晚 ${maxStr}`
+                }
+                rules.push(dateDesc)
+            }
+            else if (v.type === 'options' && Array.isArray(v.options)) {
+                // 如果选项太多，可以截断显示，防止弹窗过长
+                const optionsStr = v.options.join(' / ')
+                rules.push(`选项: [${optionsStr}]`)
+            }
+            else if (v.type === 'regex') {
+                // 这里非常关键：请检查你的后台接口返回的对象中，
+                // 那个 'idcard' 字符串是放在 validation.regex 还是 validation.pattern 还是其他？
+                // 假设它是存在 v.regex 字段里
+                const label = REGEX_LABEL_MAP[v.regexName] || v.regexName || '特定格式';
+
+                rules.push(`格式: ${label}`);
+            }
+
+            // 组合显示
+            content += `<li><strong>${header}：</strong>${rules.join('；')}</li>`
         })
     }
     content += '</ul>'
-    content += '<h4 style="margin-top: 12px; margin-bottom: 8px; font-size: 14px;">行权限设置：</h4>'
-    content += '<ul style="margin: 0; padding-left: 20px;">'
-    content += `<li>${permissions.row.addable ? '可以' : '不可'}新增行</li>`
-    content += `<li>${permissions.row.deletable ? '可以' : '不可'}删除行</li>`
-    content += `<li>${permissions.row.sortable ? '可以' : '不可'}调整行顺序</li>`
+
+    // 2. 行权限部分
+    content += '<h4 style="margin-top: 12px; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px;">行操作权限：</h4>'
+    content += '<ul style="margin: 0; padding-left: 20px; font-size: 13px;">'
+    content += `<li style="${permissions.row.addable ? '' : 'color: #999;'}">${permissions.row.addable ? '✅ 允许' : '🚫 禁止'} 新增行</li>`
+    content += `<li style="${permissions.row.deletable ? '' : 'color: #999;'}">${permissions.row.deletable ? '✅ 允许' : '🚫 禁止'} 删除行</li>`
+    content += `<li style="${permissions.row.sortable ? '' : 'color: #999;'}">${permissions.row.sortable ? '✅ 允许' : '🚫 禁止'} 调整行顺序</li>`
     content += '</ul></div>'
+
     return content
 })
 
