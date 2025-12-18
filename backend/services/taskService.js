@@ -43,6 +43,44 @@ const checkAndUpdateTaskOverdue = (taskId, callback) => {
   });
 };
 
+// 为子任务相关接口添加的统一函数：先检测主任务是否逾期，再检查子任务豁免状态
+const checkTaskOverdueAndPermission = (linkCode, callback) => {
+  // 1. 先获取子任务信息，包括original_task_id
+  const sql = `SELECT tf.*, t.taskId, t.taskDeadline, t.status 
+              FROM table_fillings tf 
+              JOIN tasks t ON tf.original_task_id = t.taskId 
+              WHERE tf.filling_task_id = ?`;
+  db.get(sql, [linkCode], (err, fillingTask) => {
+    if (err) {
+      return callback(err);
+    }
+    
+    if (!fillingTask) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    // 2. 检测主任务是否逾期
+    checkAndUpdateTaskOverdue(fillingTask.original_task_id, (err, overdueResult) => {
+      if (err) {
+        return callback(err);
+      }
+      
+      // 3. 如果主任务逾期，检查子任务是否被豁免
+      if (overdueResult.isOverdue && !fillingTask.overdue_permission) {
+        return callback(new Error('超期'));
+      }
+      
+      // 允许操作
+      callback(null, {
+        canOperate: true,
+        isOverdue: overdueResult.isOverdue,
+        taskId: fillingTask.original_task_id,
+        fillingTask: fillingTask
+      });
+    });
+  });
+};
+
 // 保存任务
 exports.saveTask = (taskData, callback) => {
   const {
@@ -250,8 +288,16 @@ const checkSubTaskOverduePermission = (linkCode, callback) => {
       return callback(new Error('Filling task not found'));
     }
     
+    // 检查是否超期：如果没有设置截止时间，不认为是超期
+    let isOverdue = false;
+    if (fillingTask.taskDeadline) {
+      const now = new Date();
+      const deadline = new Date(fillingTask.taskDeadline);
+      isOverdue = now > deadline;
+    }
+    
     // 如果任务未超期，直接允许操作
-    if (fillingTask.status !== 'overdue') {
+    if (!isOverdue) {
       return callback(null, { canOperate: true, isOverdue: false });
     }
     
@@ -267,25 +313,26 @@ const checkSubTaskOverduePermission = (linkCode, callback) => {
 
 // 获取表格填报数据
 exports.getTaskFillingData = (linkCode, callback) => {
-  // 先检查子任务的超期情况和权限
-  checkSubTaskOverduePermission(linkCode, (err) => {
+  // 先获取子任务信息，包括original_task_id
+  const sql = `
+    SELECT tf.*, t.taskId, t.taskName, t.taskDeadline, t.uploadedHeaders, t.permissions, t.formDescription 
+    FROM table_fillings tf 
+    JOIN tasks t ON tf.original_task_id = t.taskId 
+    WHERE tf.filling_task_id = ?
+  `;
+  db.get(sql, [linkCode], (err, fillingTask) => {
     if (err) {
       return callback(err);
     }
     
-    const sql = `
-      SELECT tf.*, t.taskId, t.taskName, t.taskDeadline, t.uploadedHeaders, t.permissions, t.formDescription 
-      FROM table_fillings tf 
-      JOIN tasks t ON tf.original_task_id = t.taskId 
-      WHERE tf.filling_task_id = ?
-    `;
-    db.get(sql, [linkCode], (err, fillingTask) => {
+    if (!fillingTask) {
+      return callback(new Error('Filling task not found'));
+    }
+    
+    // 检查并更新主任务是否超期
+    checkAndUpdateTaskOverdue(fillingTask.original_task_id, (err) => {
       if (err) {
         return callback(err);
-      }
-      
-      if (!fillingTask) {
-        return callback(new Error('Filling task not found'));
       }
       
       // 解析JSON数据
@@ -312,8 +359,8 @@ exports.getTaskFillingData = (linkCode, callback) => {
 
 // 保存表格草稿
 exports.saveDraft = (linkCode, tableData, callback) => {
-  // 先检查子任务的超期情况和权限
-  checkSubTaskOverduePermission(linkCode, (err) => {
+  // 先检测主任务是否逾期，再检查子任务豁免状态
+  checkTaskOverdueAndPermission(linkCode, (err) => {
     if (err) {
       return callback(err);
     }
@@ -370,8 +417,8 @@ exports.getSubTaskStatuses = (taskId, callback) => {
 
 // 提交任务（暂存、提交填报的表格数据）
 exports.submitTask = (linkCode, tableData, status, callback) => {
-  // 先检查子任务的超期情况和权限
-  checkSubTaskOverduePermission(linkCode, (err) => {
+  // 先检测主任务是否逾期，再检查子任务豁免状态
+  checkTaskOverdueAndPermission(linkCode, (err) => {
     if (err) {
       return callback(err);
     }
@@ -408,40 +455,47 @@ exports.submitTask = (linkCode, tableData, status, callback) => {
 
 // 获取任务状态
 exports.getTaskStatus = (taskId, callback) => {
-  // 检查任务是否存在
-  const checkTaskSql = `SELECT * FROM tasks WHERE taskId = ?`;
-  db.get(checkTaskSql, [taskId], (err, task) => {
+  // 先检查并更新任务是否超期
+  checkAndUpdateTaskOverdue(taskId, (err) => {
     if (err) {
       return callback(err);
     }
     
-    if (!task) {
-      return callback(new Error('Task not found'));
-    }
-    
-    // 解析JSON数据
-    task.uploadedHeaders = JSON.parse(task.uploadedHeaders);
-    task.uploadedData = JSON.parse(task.uploadedData);
-    task.splitData = JSON.parse(task.splitData);
-    task.permissions = JSON.parse(task.permissions);
-    
-    // 获取所有提交
-    const submissionsSql = `SELECT * FROM task_submissions WHERE task_id = ? ORDER BY submitted_at DESC`;
-    db.all(submissionsSql, [task.id], (err, submissions) => {
+    // 检查任务是否存在
+    const checkTaskSql = `SELECT * FROM tasks WHERE taskId = ?`;
+    db.get(checkTaskSql, [taskId], (err, task) => {
       if (err) {
         return callback(err);
       }
       
-      // 解析JSON数据
-      submissions = submissions.map(sub => {
-        sub.data = JSON.parse(sub.data);
-        return sub;
-      });
+      if (!task) {
+        return callback(new Error('Task not found'));
+      }
       
-      callback(null, {
-        task,
-        submissions,
-        total_submissions: submissions.length
+      // 解析JSON数据
+      task.uploadedHeaders = JSON.parse(task.uploadedHeaders);
+      task.uploadedData = JSON.parse(task.uploadedData);
+      task.splitData = JSON.parse(task.splitData);
+      task.permissions = JSON.parse(task.permissions);
+      
+      // 获取所有提交
+      const submissionsSql = `SELECT * FROM task_submissions WHERE task_id = ? ORDER BY submitted_at DESC`;
+      db.all(submissionsSql, [task.id], (err, submissions) => {
+        if (err) {
+          return callback(err);
+        }
+        
+        // 解析JSON数据
+        submissions = submissions.map(sub => {
+          sub.data = JSON.parse(sub.data);
+          return sub;
+        });
+        
+        callback(null, {
+          task,
+          submissions,
+          total_submissions: submissions.length
+        });
       });
     });
   });
@@ -520,8 +574,8 @@ exports.getTaskFillingTableData = (linkCode, callback) => {
 
 // 还原表格数据（用原始数据覆盖修改后的数据）
 exports.restoreTable = (linkCode, callback) => {
-  // 先检查子任务的超期情况和权限
-  checkSubTaskOverduePermission(linkCode, (err) => {
+  // 先检测主任务是否逾期，再检查子任务豁免状态
+  checkTaskOverdueAndPermission(linkCode, (err) => {
     if (err) {
       return callback(err);
     }
@@ -632,25 +686,33 @@ exports.overdueExemption = (linkCode, callback) => {
 
 // 查询任务的所有子任务是否被豁免
 exports.checkTaskOverdue = (taskId, callback) => {
-  const sql = `
-    SELECT tf.filling_task_id, tf.overdue_permission, tf.filling_task_name, t.status, t.taskDeadline 
-    FROM table_fillings tf 
-    JOIN tasks t ON tf.original_task_id = t.taskId 
-    WHERE t.taskId = ?
-  `;
-  db.all(sql, [taskId], (err, subTasks) => {
+  // 先检查并更新任务是否超期
+  checkAndUpdateTaskOverdue(taskId, (err) => {
     if (err) {
       return callback(err);
     }
     
-    callback(null, subTasks);
+    const sql = `
+      SELECT tf.filling_task_id, tf.overdue_permission, tf.filling_task_name, t.status, t.taskDeadline 
+      FROM table_fillings tf 
+      JOIN tasks t ON tf.original_task_id = t.taskId 
+      WHERE t.taskId = ?
+    `;
+    db.all(sql, [taskId], (err, subTasks) => {
+      if (err) {
+        return callback(err);
+      }
+      
+      callback(null, subTasks);
+    });
   });
 };
 
 // 查询单个子项目的豁免情况
 exports.checkSubTaskOverdue = (linkCode, callback) => {
+  // 先获取子任务信息，包括original_task_id
   const sql = `
-    SELECT tf.overdue_permission, t.status, t.taskDeadline 
+    SELECT tf.*, t.taskId, t.status, t.taskDeadline 
     FROM table_fillings tf 
     JOIN tasks t ON tf.original_task_id = t.taskId 
     WHERE tf.filling_task_id = ?
@@ -664,6 +726,26 @@ exports.checkSubTaskOverdue = (linkCode, callback) => {
       return callback(new Error('Sub task not found'));
     }
     
-    callback(null, subTask);
+    // 检查并更新主任务是否超期
+    checkAndUpdateTaskOverdue(subTask.original_task_id, (err) => {
+      if (err) {
+        return callback(err);
+      }
+      
+      // 查询更新后的状态
+      const updateSql = `
+        SELECT tf.overdue_permission, t.status, t.taskDeadline 
+        FROM table_fillings tf 
+        JOIN tasks t ON tf.original_task_id = t.taskId 
+        WHERE tf.filling_task_id = ?
+      `;
+      db.get(updateSql, [linkCode], (err, updatedSubTask) => {
+        if (err) {
+          return callback(err);
+        }
+        
+        callback(null, updatedSubTask);
+      });
+    });
   });
 };

@@ -1,7 +1,7 @@
 <template>
   <div class="task-release-root">
     <TaskInfo title="发布任务" />
-    
+
     <!-- 显示表格列表 -->
     <div v-if="isTaskValid && splitTables.length > 0" class="tables-container">
       <div class="table-header">
@@ -10,7 +10,8 @@
           <div class="status-info">
             <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
             <el-tag v-else type="danger">已超期</el-tag>
-            <span v-if="currentTask?.taskDeadline" class="deadline">截止时间: {{ formatDate(currentTask?.taskDeadline) }}</span>
+            <span v-if="currentTask?.taskDeadline" class="deadline">截止时间: {{ formatDate(currentTask?.taskDeadline)
+              }}</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -19,7 +20,7 @@
           <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
         </div>
       </div>
-      
+
       <el-table :data="splitTablesWithLinks" style="width: 100%">
         <el-table-column prop="name" label="表格名称" width="200" />
         <el-table-column prop="rowCount" label="行数" width="100" />
@@ -40,56 +41,37 @@
 
         <el-table-column label="操作" width="250">
           <template #default="scope">
-            <el-button 
-              v-if="scope.row.status === '已上传'" 
-              type="primary" 
-              size="small" 
-              @click="viewTable(scope.row)"
-            >
+            <el-button v-if="scope.row.status === '已上传'" type="primary" size="small" @click="viewTable(scope.row)">
               查看
             </el-button>
-            <el-button 
-              v-if="scope.row.status === '已上传'" 
-              type="warning" 
-              size="small" 
-              @click="rejectTable(scope.row)"
-            >
-              退回
-            </el-button>
-            <el-button 
-              v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" 
-              type="warning" 
-              size="small"
-              @click="exemptSubTask(scope.row)"
-            >
+            <el-button v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" type="warning"
+              size="small" @click="exemptSubTask(scope.row)">
               逾期豁免
             </el-button>
+
+            <el-button v-if="scope.row.status === '已上传'" type="warning" size="small" @click="rejectTable(scope.row)">
+              退回
+            </el-button>
+
           </template>
         </el-table-column>
       </el-table>
     </div>
-    
+
     <!-- 表格数据查看对话框 -->
-    <el-dialog
-      v-model="tableDataDialogVisible"
-      title="表格数据"
-      width="80%"
-    >
+    <el-dialog v-model="tableDataDialogVisible" title="表格数据" width="80%">
       <div v-if="tableDataLoading" class="dialog-loading">
         <el-icon :size="48" class="loading-icon">
           <Loading />
         </el-icon>
         <div>加载中...</div>
       </div>
-      <el-table v-else-if="tableData && tableData.table_data && tableData.table_data.length > 0" :data="tableData.table_data" style="width: 100%">
-        <el-table-column 
-          v-for="(column, index) in tableHeaders" 
-          :key="index" 
-          :prop="'col' + index" 
-          :label="column" 
-        />
+      <el-table v-else-if="tableData && tableData.table_data && tableData.table_data.length > 0"
+        :data="tableData.table_data" style="width: 100%">
+        <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
       </el-table>
-      <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)" class="no-data">
+      <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)"
+        class="no-data">
         该表格没有数据
       </div>
       <template #footer>
@@ -131,7 +113,7 @@ const isTaskValid = ref(true);
 
 // 拆分表格相关数据
 const splitTables = ref([]);
-const loading = ref(false);
+const loading = ref(true); // 初始设置为true，避免数据加载完成前按钮闪烁
 
 // 计算属性：为表格添加链接和状态（从服务端获取）
 const splitTablesWithLinks = computed(() => {
@@ -207,7 +189,7 @@ const exportAllLinks = async () => {
     const fullLink = `${window.location.origin}/table-filling?link=${table.code}`;
     return `${table.name}	${fullLink}`;
   }).join("\n");
-  
+
   try {
     await navigator.clipboard.writeText(linksText);
     ElMessage.success({
@@ -244,31 +226,31 @@ const goToTaskCondition = async () => {
     // 根据用户要求，task任务只有删除delete，没有撤回
     // 先调用API删除任务及相关子任务
     await deleteTask(taskId.value);
-    
+
     // 设置进度为条件设置页面
     store.setProgress(taskId.value, 'condition');
-    
+
     // 导航到条件设置页面
     router.push({
       path: "/task-condition",
       query: { taskId: taskId.value }
     });
-    
+
     ElMessage.success("任务已删除并返回条件设置页面");
   } catch (error) {
     console.error("返回条件设置页面失败:", error);
-    
+
     // 检查错误信息，如果任务已删除或不存在，仍允许跳转
     if (error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found')) {
       // 设置进度为条件设置页面
       store.setProgress(taskId.value, 'condition');
-      
+
       // 导航到条件设置页面
       router.push({
         path: "/task-condition",
         query: { taskId: taskId.value }
       });
-      
+
       ElMessage.success("任务已删除并返回条件设置页面");
     } else {
       ElMessage.error("返回条件设置页面失败，请稍后重试");
@@ -334,19 +316,19 @@ const exportAllTables = async () => {
   try {
     // 获取所有已提交的表格
     const submittedTables = splitTables.value.filter(table => table.status === '已上传');
-    
+
     if (submittedTables.length === 0) {
       ElMessage.warning("没有已提交的表格可以导出");
       return;
     }
-    
+
     // 显示加载状态
     const loading = ElLoading.service({
       lock: true,
       text: '正在汇总导出数据，请稍候...',
       background: 'rgba(0, 0, 0, 0.7)'
     });
-    
+
     // 获取所有已提交表格的数据
     const allTableData = await Promise.all(
       submittedTables.map(async table => {
@@ -359,26 +341,26 @@ const exportAllTables = async () => {
         }
       })
     );
-    
+
     // 过滤掉获取失败的表格数据
     const validTableData = allTableData.filter(data => data !== null);
-    
+
     if (validTableData.length === 0) {
       ElMessage.error("获取表格数据失败，请稍后重试");
       loading.close();
       return;
     }
-    
+
     // 汇总数据：使用当前任务的uploadedHeaders作为表头，其他表格只保留数据行
     const mergedData = [];
-    
+
     // 获取表头（从当前任务的uploadedHeaders）
     const headers = currentTask.value?.uploadedHeaders || [];
-    
+
     // 如果有表头，添加到汇总数据中
     if (headers.length > 0) {
       mergedData.push(headers);
-      
+
       // 添加所有数据行
       validTableData.forEach(tableData => {
         if (tableData && tableData.length > 0) {
@@ -388,7 +370,7 @@ const exportAllTables = async () => {
     } else if (validTableData.length > 0 && validTableData[0].length > 0) {
       // 如果没有上传的表头，则尝试从第一个有效表格的第一行获取表头
       mergedData.push(validTableData[0][0]); // 添加表头
-      
+
       // 添加所有数据行（包括第一个表格的其他行和后续表格的所有行）
       validTableData.forEach((tableData, index) => {
         if (tableData && tableData.length > 0) {
@@ -400,23 +382,23 @@ const exportAllTables = async () => {
         }
       });
     }
-    
+
     // 创建工作表
     const worksheet = XLSX.utils.aoa_to_sheet(mergedData);
-    
+
     // 创建工作簿并添加工作表
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '汇总数据');
-    
+
     // 生成文件名
     const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
-    
+
     // 导出Excel文件
     XLSX.writeFile(workbook, exportFileName);
-    
+
     // 关闭加载状态
     loading.close();
-    
+
     ElMessage.success("汇总导出成功");
   } catch (error) {
     console.error("汇总导出失败:", error);
@@ -428,24 +410,24 @@ const exportAllTables = async () => {
 const fetchSplitTables = async () => {
   try {
     loading.value = true;
-    
+
     // 检查是否有taskId
     if (!route.query.taskId) {
       ElMessage.error("缺少必要的任务ID参数");
       isTaskValid.value = false;
       return;
     }
-    
+
     // 调用API从服务端获取数据，使用query中的taskId
     const response = await getTaskReleaseData(route.query.taskId as string);
-    
+
     // 检查响应数据是否有效
     if (!response) {
       ElMessage.error("获取的数据格式无效");
       isTaskValid.value = false;
       return;
     }
-    
+
     // 处理未拆分表格的情况：如果splitData为空，使用uploadedData创建一个单元素的splitData数组
     if (!response.splitData || response.splitData.length === 0) {
       // 从当前任务获取原始数据和表头
@@ -462,7 +444,7 @@ const fetchSplitTables = async () => {
         return;
       }
     }
-    
+
     // 将服务端返回的数据保存到本地store
     const existingTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
     if (existingTaskIndex !== -1) {
@@ -470,50 +452,50 @@ const fetchSplitTables = async () => {
       // 只保留本地的权限设置，其他所有数据都从服务端获取
       const existingTask = store.tasks[existingTaskIndex];
       const localPermissions = existingTask.permissions;
-      
+
       // 使用服务端数据完全覆盖本地任务数据
-      const updatedTask = { 
+      const updatedTask = {
         ...response,
         // 保留本地的权限设置
         permissions: localPermissions,
         // 更新时间
         updateTime: new Date().toLocaleString('zh-CN')
       };
-      
+
       // 直接替换整个任务对象
       store.tasks[existingTaskIndex] = updatedTask;
-      
+
       // 手动保存状态到本地存储
       saveState(store.$state);
     } else {
       // 如果任务不存在，创建新任务
       store.createTask(response.taskId, response.fileName);
-      
+
       // 找到新创建的任务索引
       const newTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
       if (newTaskIndex !== -1) {
         // 使用服务端数据完全替换新创建的任务
-        store.tasks[newTaskIndex] = { 
+        store.tasks[newTaskIndex] = {
           ...response,
           updateTime: new Date().toLocaleString('zh-CN') // 更新时间
         };
-        
+
         // 手动保存状态到本地存储
         saveState(store.$state);
       }
     }
-    
+
     // 确保tableLinks存在且为数组
     const tableLinks = response.tableLinks || [];
-    
-    // 获取任务状态（从当前任务数据或直接调用API）
-    const taskStatus = currentTask.value?.status || 'draft';
-    
+
+    // 获取任务状态（从后端返回的最新数据）
+    const taskStatus = response.status || 'draft';
+
     // 转换splitData为前端需要的表格格式
     splitTables.value = response.splitData.map((table, index) => {
       // 获取对应索引的链接码，如果没有则使用空字符串
       const linkCode = tableLinks[index]?.code || '';
-      
+
       return {
         id: index + 1,
         name: table.sheetName || `表格${index + 1}`,
@@ -525,10 +507,10 @@ const fetchSplitTables = async () => {
         originalData: table
       };
     });
-    
+
     // 获取最新的子任务状态
     const subtaskStatuses = await getSubTaskStatuses(route.query.taskId as string);
-    
+
     // 更新表格状态
     if (subtaskStatuses && subtaskStatuses.length > 0) {
       splitTables.value.forEach(table => {
@@ -550,19 +532,43 @@ const fetchSplitTables = async () => {
         }
       });
     }
-    
+
     // 查询子任务的豁免情况
     const taskOverdueInfo = await checkTaskOverdue(route.query.taskId as string);
-    if (taskOverdueInfo && taskOverdueInfo.overdueStatus) {
-      // 更新每个表格的豁免状态
+    console.log('后端返回的逾期豁免数据:', taskOverdueInfo);
+    
+    // 获取子任务豁免信息数组
+    let overdueStatus = [];
+    if (taskOverdueInfo && Array.isArray(taskOverdueInfo)) {
+      // 直接返回子任务数组（当前后端实现）
+      overdueStatus = taskOverdueInfo;
+    } else if (taskOverdueInfo && taskOverdueInfo.overdueStatus) {
+      // 包含overdueStatus数组的新结构
+      overdueStatus = taskOverdueInfo.overdueStatus;
+    }
+    
+    // 更新每个表格的豁免状态
+    if (overdueStatus.length > 0) {
       splitTables.value.forEach(table => {
-        const overdueInfo = taskOverdueInfo.overdueStatus.find(item => item.filling_task_id === table.code);
+        const overdueInfo = overdueStatus.find(item => item.filling_task_id === table.code);
         if (overdueInfo) {
-          table.overduePermission = overdueInfo.overdue_permission;
+          console.log(`表格 ${table.name} 的豁免信息:`, overdueInfo);
+          console.log(`overdue_permission原始值:`, overdueInfo.overdue_permission);
+          console.log(`overdue_permission类型:`, typeof overdueInfo.overdue_permission);
+          
+          // 正确转换overdue_permission为布尔值
+          // 处理数值型（1/0）和布尔型
+          table.overduePermission = Boolean(Number(overdueInfo.overdue_permission));
+          
+          console.log(`转换后的overduePermission:`, table.overduePermission);
+        } else {
+          console.log(`未找到表格 ${table.name} 的豁免信息，code:`, table.code);
+          // 默认设置为未豁免
+          table.overduePermission = false;
         }
       });
     }
-    
+
     // 标记任务为有效
     isTaskValid.value = true;
   } catch (error) {
@@ -576,12 +582,12 @@ const fetchSplitTables = async () => {
 
 onMounted(() => {
   // 根据路由query中的taskId设置当前任务
-  
+
   if (taskId.value) {
     // 设置进度为任务发布页面
     store.setProgress(taskId.value, 'release');
   }
-  
+
   // 初始化表格数据
   fetchSplitTables();
 });
@@ -633,6 +639,7 @@ onMounted(() => {
 .copy-clickable {
   cursor: pointer;
   color: #409eff;
+
   &:hover {
     text-decoration: underline;
   }
