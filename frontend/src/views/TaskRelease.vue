@@ -60,15 +60,25 @@
     </div>
 
     <!-- 表格数据查看对话框 -->
-    <el-dialog v-model="tableDataDialogVisible" title="表格数据" width="80%">
+    <el-dialog v-model="tableDataDialogVisible" width="80%">
+      <template #title>
+        <div class="dialog-header">
+          <span>表格数据</span>
+          <div class="dialog-header-actions">
+            <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '比较' }}</el-button>
+            <el-button size="small" @click="tableDataDialogVisible = false">关闭</el-button>
+          </div>
+        </div>
+      </template>
       <div v-if="tableDataLoading" class="dialog-loading">
         <el-icon :size="48" class="loading-icon">
           <Loading />
         </el-icon>
         <div>加载中...</div>
       </div>
-      <el-table v-else-if="tableData && tableData.table_data && tableData.table_data.length > 0"
-        :data="tableData.table_data" style="width: 100%">
+      <el-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0"
+        :data="tableData.table_data" style="width: 100%"
+        :cell-style="getCellStyle">
         <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
       </el-table>
       <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)"
@@ -77,7 +87,7 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="tableDataDialogVisible = false">关闭</el-button>
+          <!-- 按钮已移到标题栏 -->
         </span>
       </template>
     </el-dialog>
@@ -131,6 +141,11 @@ const tableDataDialogVisible = ref(false);
 const tableData = ref(null);
 const tableDataLoading = ref(false);
 const tableHeaders = ref([]);
+// 表格差异比较相关变量
+const localTableData = ref(null);
+const showDifferences = ref(false);
+const comparisonResults = ref([]);
+const currentViewingTable = ref(null);
 
 // 链接简写函数：简化显示的链接，保持复制使用完整链接
 const shortenLink = (code) => {
@@ -263,6 +278,8 @@ const goToTaskCondition = async () => {
 const viewTable = async (table) => {
   tableDataLoading.value = true;
   tableDataDialogVisible.value = true;
+  showDifferences.value = false; // 重置比较状态
+  currentViewingTable.value = table; // 保存当前查看的表格
   try {
     const response = await getTableData(table.code);
     // 将二维数组转换为对象数组，以便el-table正确渲染
@@ -279,12 +296,138 @@ const viewTable = async (table) => {
     };
     // 使用当前任务的uploadedHeaders作为表头
     tableHeaders.value = currentTask.value?.uploadedHeaders || [];
+    
+    // 从本地存储获取对应的表格数据
+    getLocalTableData(table);
   } catch (error) {
     console.error("获取表格数据失败:", error);
     ElMessage.error("获取表格数据失败，请稍后重试");
   } finally {
     tableDataLoading.value = false;
   }
+};
+
+// 获取原始表格数据（从当前任务的splitData中）
+const getLocalTableData = (table) => {
+  try {
+    // 直接从当前任务的splitData中获取原始表格数据
+    if (currentTask.value && currentTask.value.splitData) {
+      const originalTable = currentTask.value.splitData.find(item => item.sheetName === table.name);
+      if (originalTable && originalTable.data) {
+        // 将二维数组转换为对象数组，以便el-table正确渲染
+        const localTableDataArray = originalTable.data.map(row => {
+          const rowObj = {};
+          row.forEach((cell, index) => {
+            rowObj["col" + index] = cell;
+          });
+          return rowObj;
+        });
+        localTableData.value = localTableDataArray;
+      } else {
+        localTableData.value = [];
+        console.warn("未找到对应的原始表格数据");
+      }
+    } else {
+      localTableData.value = [];
+      console.warn("当前任务没有splitData");
+    }
+  } catch (error) {
+    console.error("获取原始表格数据失败:", error);
+    localTableData.value = [];
+  }
+};
+
+// 比较表格差异
+const compareTable = () => {
+  // 如果已经在比较状态，点击按钮则取消比较
+  if (showDifferences.value) {
+    showDifferences.value = false;
+    comparisonResults.value = [];
+    return;
+  }
+  
+  // 检查数据有效性
+  if (!tableData.value || !tableData.value.table_data || !Array.isArray(tableData.value.table_data)) {
+    ElMessage.warning("报送表格数据无效");
+    return;
+  }
+  
+  if (!localTableData.value || !Array.isArray(localTableData.value) || localTableData.value.length === 0) {
+    ElMessage.warning("原始表格数据无效");
+    return;
+  }
+  
+  const submittedData = tableData.value.table_data; // 报送者修改后的数据
+  const originalData = localTableData.value; // 原始表格数据
+  
+  // 重置比较结果
+  comparisonResults.value = [];
+  
+  // 比较每一行和每一列的数据
+  const minRows = Math.min(submittedData.length, originalData.length);
+  
+  for (let rowIndex = 0; rowIndex < minRows; rowIndex++) {
+    const submittedRow = submittedData[rowIndex] || {};
+    const originalRow = originalData[rowIndex] || {};
+    
+    const rowComparison = {
+      rowIndex,
+      differences: []
+    };
+    
+    // 获取最大列数进行比较，确保所有列都被检查
+    const maxCols = Math.max(
+      Object.keys(submittedRow).length,
+      Object.keys(originalRow).length
+    );
+    
+    for (let colIndex = 0; colIndex < maxCols; colIndex++) {
+      const submittedCell = submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '';
+      const originalCell = originalRow[`col${colIndex}`] !== undefined ? originalRow[`col${colIndex}`] : '';
+      
+      // 容错比较：去除首尾空格并转换为字符串
+      const submittedCellStr = String(submittedCell).trim();
+      const originalCellStr = String(originalCell).trim();
+      
+      if (submittedCellStr !== originalCellStr) {
+        rowComparison.differences.push({
+          colIndex,
+          serverValue: submittedCell, // 报送的数据
+          localValue: originalCell    // 原始的数据
+        });
+      }
+    }
+    
+    // 如果该行有差异，添加到比较结果
+    if (rowComparison.differences.length > 0) {
+      comparisonResults.value.push(rowComparison);
+    }
+  }
+  
+  // 显示差异
+  showDifferences.value = true;
+  
+  if (comparisonResults.value.length === 0) {
+    ElMessage.success("两份表格数据完全一致");
+  }
+};
+
+// 获取单元格样式
+const getCellStyle = ({row, column, rowIndex, columnIndex}) => {
+  if (!showDifferences.value || comparisonResults.value.length === 0) {
+    return {};
+  }
+  
+  // 检查当前单元格是否有差异
+  const rowComparison = comparisonResults.value.find(item => item.rowIndex === rowIndex);
+  if (rowComparison) {
+    const hasDifference = rowComparison.differences.some(diff => diff.colIndex === columnIndex);
+    if (hasDifference) {
+      return { backgroundColor: '#ffcccc' };
+    }
+  }
+  
+  return {};
 };
 
 // 退回表格
@@ -553,17 +696,13 @@ const fetchSplitTables = async () => {
       splitTables.value.forEach(table => {
         const overdueInfo = overdueStatus.find(item => item.filling_task_id === table.code);
         if (overdueInfo) {
-          console.log(`表格 ${table.name} 的豁免信息:`, overdueInfo);
-          console.log(`overdue_permission原始值:`, overdueInfo.overdue_permission);
-          console.log(`overdue_permission类型:`, typeof overdueInfo.overdue_permission);
+          
           
           // 正确转换overdue_permission为布尔值
           // 处理数值型（1/0）和布尔型
           table.overduePermission = Boolean(Number(overdueInfo.overdue_permission));
           
-          console.log(`转换后的overduePermission:`, table.overduePermission);
         } else {
-          console.log(`未找到表格 ${table.name} 的豁免信息，code:`, table.code);
           // 默认设置为未豁免
           table.overduePermission = false;
         }
@@ -644,5 +783,17 @@ onMounted(() => {
   &:hover {
     text-decoration: underline;
   }
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.dialog-header-actions {
+  display: flex;
+  gap: 10px;
 }
 </style>
