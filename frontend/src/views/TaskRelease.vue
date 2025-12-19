@@ -40,10 +40,13 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="250">
+        <el-table-column label="操作" width="350">
           <template #default="scope">
             <el-button v-if="scope.row.status === '已上传'" type="primary" size="small" @click="viewTable(scope.row)">
               查看
+            </el-button>
+            <el-button v-if="scope.row.status === '已上传'" type="success" size="small" @click="downloadTable(scope.row)">
+              下载
             </el-button>
             <el-button v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" type="warning"
               size="small" @click="exemptSubTask(scope.row)">
@@ -439,6 +442,67 @@ const rejectTable = async (table) => {
   } catch (error) {
     console.error("退回表格失败:", error);
     ElMessage.error("退回表格失败，请稍后重试");
+  }
+};
+
+// 下载单个表格数据
+const downloadTable = async (table) => {
+  try {
+    // 显示加载状态
+    const loading = ElLoading.service({
+      lock: true,
+      text: '正在下载表格数据，请稍候...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
+
+    // 获取该表格的数据
+    const response = await getTableData(table.code);
+    const tableData = response.table_data;
+
+    if (!tableData || tableData.length === 0) {
+      ElMessage.warning("该表格没有数据");
+      loading.close();
+      return;
+    }
+
+    // 准备导出数据：使用当前任务的uploadedHeaders作为表头
+    const exportData = [];
+    const headers = currentTask.value?.uploadedHeaders || [];
+
+    // 如果有表头，添加到导出数据中
+    if (headers.length > 0) {
+      exportData.push(headers);
+      // 添加所有数据行
+      exportData.push(...tableData);
+    } else if (tableData.length > 0) {
+      // 如果没有上传的表头，则使用表格的第一行作为表头
+      exportData.push(tableData[0]);
+      // 只添加数据行（跳过作为表头的第一行）
+      exportData.push(...tableData.slice(1));
+    } else {
+      exportData.push(...tableData);
+    }
+
+    // 创建工作表
+    const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+
+    // 创建工作簿并添加工作表
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, table.name);
+
+    // 生成文件名
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
+
+    // 导出Excel文件
+    XLSX.writeFile(workbook, exportFileName);
+
+    // 关闭加载状态
+    loading.close();
+
+    ElMessage.success("表格下载成功");
+  } catch (error) {
+    console.error("表格下载失败:", error);
+    ElMessage.error("表格下载失败，请稍后重试");
   }
 };
 
