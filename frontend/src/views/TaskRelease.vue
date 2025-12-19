@@ -743,7 +743,7 @@ const fetchSplitTables = async () => {
 
     // 查询子任务的豁免情况
     const taskOverdueInfo = await checkTaskOverdue(route.query.taskId as string);
-    console.log('后端返回的逾期豁免数据:', taskOverdueInfo);
+
     
     // 获取子任务豁免信息数组
     let overdueStatus = [];
