@@ -251,10 +251,8 @@ const fetchSplitTables = async () => {
           return obj;
         });
 
-        // 根据用户需求设置列显示
-        // 拆分时：默认只显示拆分列
-        // 不拆分时：默认显示所有列
-        const columnsToShow = split.value ? [header.value] : item.headers;
+        // 查看表格时始终显示所有列，无论是否拆分
+        const columnsToShow = item.headers;
         
         return {
           name: item.sheetName,
