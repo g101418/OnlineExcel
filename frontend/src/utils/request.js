@@ -4,7 +4,7 @@
 const getApiBaseUrl = () => {
   const currentUrl = window.location.href;
   const urlObj = new URL(currentUrl);
-  return `${urlObj.protocol}//${urlObj.hostname}:3000/api`;
+  return `${urlObj.protocol}//${urlObj.host}/api`;
 };
 
 // API基础URL
