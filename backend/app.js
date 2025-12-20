@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 
-const limiter = require('./utils/rate-limit');
+const rateLimiter = require('./utils/rate-limit');
 const redirectLocalhost = require('./utils/localhost-redirector');
 const securityHeaders = require('./utils/security-headers');
 
@@ -29,7 +29,7 @@ app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 app.use(securityHeaders);
 
 // 应用限流中间件
-app.use(limiter);
+app.use(rateLimiter);
 
 // 静态文件服务 - 提供前端打包后的文件
 app.use(express.static(path.join(__dirname, './dist')));
