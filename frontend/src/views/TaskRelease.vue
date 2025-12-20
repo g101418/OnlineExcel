@@ -21,7 +21,7 @@
             <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
             <el-tag v-else type="danger">已超期</el-tag>
             <span v-if="currentTask?.taskDeadline" class="deadline">截止时间: {{ formatDate(currentTask?.taskDeadline)
-              }}</span>
+            }}</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -30,10 +30,10 @@
           </el-tooltip>
           <el-divider direction="vertical" />
           <el-tooltip content="点击导出所有已提交表格的数据" placement="top">
-            <el-button :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
+            <el-button type="success" :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
           </el-tooltip>
           <el-divider direction="vertical" />
-          <el-tooltip content="回到上一页面，同时撤回任务，填报者将无法打开原任务链接。" placement="top">
+          <el-tooltip content="回到上一页面，同时撤回任务，已填报数据将丢失，填报者将无法打开原任务链接。" placement="top">
             <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
           </el-tooltip>
           <el-tooltip content="永久删除任务，无法找回！" placement="top">
@@ -44,9 +44,15 @@
 
       <el-table :data="splitTablesWithLinks" style="width: 100%">
         <el-table-column type="index" label="序号" width="70" />
-        <el-table-column prop="name" label="表格名称" width="200" />
+        <el-table-column prop="name" label="表格名称" width="200">
+          <template #default="scope">
+            <el-tooltip content="点击查看原始数据" placement="top">
+              <span class="copy-clickable" @click="viewOriginalTable(scope.row)">{{ scope.row.name }}</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column prop="rowCount" label="行数" width="100" />
-        <el-table-column label="链接" min-width="200">
+        <el-table-column label="填报者登录链接" min-width="200">
           <template #default="scope">
             <el-tooltip content="点击复制链接" placement="top">
               <span class="copy-clickable" @click="copyLink(scope.row.code)">{{ shortenLink(scope.row.code) }}</span>
@@ -63,17 +69,22 @@
 
         <el-table-column label="操作" width="350">
           <template #default="scope">
-            <el-button v-if="scope.row.status === '已上传'" type="primary" size="small" @click="viewTable(scope.row)">
-              查看
-            </el-button>
-            <el-button v-if="scope.row.status === '已上传'" type="success" size="small" @click="downloadTable(scope.row)">
-              下载
-            </el-button>
+            <el-tooltip content="查看填报者报送的表格。" placement="top">
+              <el-button v-if="scope.row.status === '已上传'" type="primary" size="small" @click="viewTable(scope.row)">
+                查看
+              </el-button>
+            </el-tooltip>
+            <el-tooltip content="将填报者报送的表格下载到本地。" placement="top">
+              <el-button v-if="scope.row.status === '已上传'" type="success" size="small"
+                @click="downloadTable(scope.row)">
+                下载
+              </el-button>
+            </el-tooltip>
             <el-tooltip content="该填报者已逾期，无法填报，豁免后填报者可以继续填报。" placement="top">
-            <el-button v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" type="warning"
-              size="small" @click="exemptSubTask(scope.row)">
-              逾期豁免
-            </el-button>
+              <el-button v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" type="warning"
+                size="small" @click="exemptSubTask(scope.row)">
+                逾期豁免
+              </el-button>
             </el-tooltip>
             <el-tooltip content="退回给填报者，由其重新修改。" placement="top">
               <el-button v-if="scope.row.status === '已上传'" type="warning" size="small" @click="rejectTable(scope.row)">
@@ -89,7 +100,7 @@
     <el-dialog v-model="tableDataDialogVisible" width="80%">
       <template #title>
         <div class="dialog-header">
-          <span>表格数据</span>
+          <span>填报者报送的表格数据</span>
           <div class="dialog-header-actions">
             <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '与原表格比较'
             }}</el-button>
@@ -109,6 +120,35 @@
       </el-table>
       <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)"
         class="no-data">
+        该表格没有数据
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <!-- 按钮已移到标题栏 -->
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 原始表格数据查看对话框 -->
+    <el-dialog v-model="originalDataDialogVisible" width="80%">
+      <template #title>
+        <div class="dialog-header">
+          <span>原始表格数据</span>
+          <div class="dialog-header-actions">
+            <el-button size="small" @click="originalDataDialogVisible = false">关闭</el-button>
+          </div>
+        </div>
+      </template>
+      <div v-if="originalDataLoading" class="dialog-loading">
+        <el-icon :size="48" class="loading-icon">
+          <Loading />
+        </el-icon>
+        <div>加载中...</div>
+      </div>
+      <el-table v-if="originalTableData && originalTableData.length > 0" :data="originalTableData" style="width: 100%">
+        <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
+      </el-table>
+      <div v-else-if="!originalDataLoading && (!originalTableData || originalTableData.length === 0)" class="no-data">
         该表格没有数据
       </div>
       <template #footer>
@@ -167,6 +207,10 @@ const tableDataDialogVisible = ref(false);
 const tableData = ref(null);
 const tableDataLoading = ref(false);
 const tableHeaders = ref([]);
+// 原始数据查看相关变量
+const originalDataDialogVisible = ref(false);
+const originalTableData = ref(null);
+const originalDataLoading = ref(false);
 // 悬浮提示框相关变量
 const showNotification = ref(true);
 let notificationTimer = null;
@@ -175,11 +219,18 @@ const localTableData = ref(null);
 const showDifferences = ref(false);
 const comparisonResults = ref([]);
 const currentViewingTable = ref(null);
+const currentOriginalViewingTable = ref(null);
 
 // 链接简写函数：简化显示的链接，保持复制使用完整链接
 const shortenLink = (code) => {
   if (!code) return '';
   return `http://...link=${code}`;
+};
+
+// 清理工作表名称中的无效字符（Excel不允许的字符：: \/?*[]）
+const sanitizeSheetName = (name) => {
+  if (!name) return 'Sheet1';
+  return name.replace(/[:\\/\?\*\[\]]/g, '_');
 };
 
 // 格式化日期
@@ -299,7 +350,7 @@ const goToTaskCondition = async () => {
 
       ElMessage.success("任务已删除并返回条件设置页面");
     } else {
-      ElMessage.error("返回条件设置页面失败，请稍后重试");
+      ElMessage.error("撤回任务失败，请稍后重试");
     }
   }
 };
@@ -334,6 +385,44 @@ const viewTable = async (table) => {
     ElMessage.error("获取表格数据失败，请稍后重试");
   } finally {
     tableDataLoading.value = false;
+  }
+};
+
+// 查看原始表格数据
+const viewOriginalTable = (table) => {
+  originalDataLoading.value = true;
+  originalDataDialogVisible.value = true;
+  currentOriginalViewingTable.value = table; // 保存当前查看的原始表格
+  try {
+    // 直接从当前任务的splitData中获取原始表格数据
+    if (currentTask.value && currentTask.value.splitData) {
+      const originalTable = currentTask.value.splitData.find(item => item.sheetName === table.name);
+      if (originalTable && originalTable.data) {
+        // 将二维数组转换为对象数组，以便el-table正确渲染
+        const originalTableDataArray = originalTable.data.map(row => {
+          const rowObj = {};
+          row.forEach((cell, index) => {
+            rowObj["col" + index] = cell;
+          });
+          return rowObj;
+        });
+        originalTableData.value = originalTableDataArray;
+        // 使用当前任务的uploadedHeaders作为表头
+        tableHeaders.value = currentTask.value?.uploadedHeaders || [];
+      } else {
+        originalTableData.value = [];
+        ElMessage.warning("未找到对应的原始表格数据");
+      }
+    } else {
+      originalTableData.value = [];
+      ElMessage.warning("当前任务没有原始表格数据");
+    }
+  } catch (error) {
+    console.error("获取原始表格数据失败:", error);
+    originalTableData.value = [];
+    ElMessage.error("获取原始表格数据失败，请稍后重试");
+  } finally {
+    originalDataLoading.value = false;
   }
 };
 
@@ -395,7 +484,7 @@ const compareTable = () => {
 
   // 比较每一行和每一列的数据
   const minRows = Math.min(submittedData.length, originalData.length);
-
+  const maxCols = Object.keys(submittedData[0]).length
   for (let rowIndex = 0; rowIndex < minRows; rowIndex++) {
     const submittedRow = submittedData[rowIndex] || {};
     const originalRow = originalData[rowIndex] || {};
@@ -404,12 +493,6 @@ const compareTable = () => {
       rowIndex,
       differences: []
     };
-
-    // 获取最大列数进行比较，确保所有列都被检查
-    const maxCols = Math.max(
-      Object.keys(submittedRow).length,
-      Object.keys(originalRow).length
-    );
 
     for (let colIndex = 0; colIndex < maxCols; colIndex++) {
       const submittedCell = submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '';
@@ -430,6 +513,29 @@ const compareTable = () => {
 
     // 如果该行有差异，添加到比较结果
     if (rowComparison.differences.length > 0) {
+      comparisonResults.value.push(rowComparison);
+    }
+  }
+
+  // 处理submittedData行数多于originalData的情况
+  if (submittedData.length > originalData.length) {
+    for (let rowIndex = originalData.length; rowIndex < submittedData.length; rowIndex++) {
+      const submittedRow = submittedData[rowIndex] || {};
+      const rowComparison = {
+        rowIndex,
+        differences: []
+      };
+
+      // 将该行的所有列都标记为差异
+      for (let colIndex = 0; colIndex < maxCols; colIndex++) {
+        rowComparison.differences.push({
+          colIndex,
+          serverValue: submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '',
+          localValue: '' // 原始数据中没有该行
+        });
+      }
+
+      // 添加到比较结果
       comparisonResults.value.push(rowComparison);
     }
   }
@@ -515,15 +621,15 @@ const downloadTable = async (table) => {
 
     // 创建工作簿并添加工作表
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, table.name);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sanitizeSheetName(table.name));
 
     // 生成文件名 - 使用原始文件的扩展名
     const fileExtension = fileName.value.split('.').pop() || 'xlsx';
-    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
-    
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
+
     // 导出文件 - 处理不支持的格式
     const bookType = ['et', 'xls'].includes(fileExtension.toLowerCase()) ? 'xlsx' : fileExtension.toLowerCase();
-    
+
     // 导出文件
     XLSX.writeFile(workbook, exportFileName, { bookType });
 
@@ -681,11 +787,11 @@ const exportAllTables = async () => {
 
     // 生成文件名 - 使用原始文件的扩展名
     const fileExtension = fileName.value.split('.').pop() || 'xlsx';
-    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
-    
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
+
     // 导出文件 - 处理不支持的格式
     const bookType = ['et', 'xls'].includes(fileExtension.toLowerCase()) ? 'xlsx' : fileExtension.toLowerCase();
-    
+
     // 导出文件
     XLSX.writeFile(workbook, exportFileName, { bookType });
 

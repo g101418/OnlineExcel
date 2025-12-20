@@ -1,3 +1,5 @@
+import logger from './logger.js';
+
 // 错误类型枚举
 const ERROR_TYPES = {
   DATABASE: 'database',
@@ -85,7 +87,7 @@ const formatErrorResponse = (error) => {
 // 全局错误处理中间件
 const errorHandler = (err, req, res, next) => {
   // 记录原始错误信息到服务器日志（便于调试）
-  console.error('Server Error:', {
+  logger.error('Server Error:', {
     path: req.path,
     method: req.method,
     error: err.message,

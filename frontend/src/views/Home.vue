@@ -9,14 +9,14 @@
       <p class="desc">将大型表格拆分为多个可管理的任务，支持批量生成与下载。</p>
 
       <el-button class="start-btn" size="large" type="primary" @click="openUploadDialog">
-        上传表格开始任务
+        加载表格开始任务
       </el-button>
-      <el-dialog title="上传表格" v-model="showUploadDialog" append-to-body width="680px" @close="onDialogClose">
+      <el-dialog title="加载表格" v-model="showUploadDialog" append-to-body width="680px" @close="onDialogClose">
         <div class="dialog-content">
           <el-upload class="upload-demo" :before-upload="beforeUpload" :auto-upload="false" accept=".xls,.xlsx,.csv,.et"
             :on-change="handleChange" :file-list="fileList" :limit="1" drag>
             <i class="el-icon-upload"></i>
-            <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+            <div class="el-upload__text">将文件拖到此处，或<em>点击加载</em></div>
             <div class="el-upload__tip">仅支持后缀为 .xls/.xlsx/.csv/.et 的表格文件</div>
           </el-upload>
           <div v-if="uploading" style="margin-top: 12px">
@@ -26,7 +26,7 @@
         <template #footer>
           <span class="dialog-footer">
             <el-button @click="onDialogClose">取消</el-button>
-            <el-button type="primary" :disabled="!selectedFile || uploading" @click="submitUpload">上传并继续</el-button>
+            <el-button type="primary" :disabled="!selectedFile || uploading" @click="submitUpload">加载表格并继续</el-button>
           </span>
         </template>
       </el-dialog>
@@ -177,7 +177,7 @@ const calculateDataSize = (headers, data) => {
 const getStatusText = (progress) => {
   const statusMap = {
     generation: '正在拆分表格',
-    condition: '正在设置条件',
+    condition: '正在完善任务',
     release: '已经发布任务',
     completed: '已经完成'
   };
@@ -228,6 +228,31 @@ const navigateToTask = (table) => {
   });
 };
 
+// 删除单个任务的通用函数
+const deleteSingleTask = async (taskId) => {
+  const task = store.getTask(taskId);
+  if (!task) return true;
+
+  try {
+    // 无论任务处于什么状态，都先检查服务端是否存在该任务
+    await checkIdExists(taskId);
+    // 服务端存在，调用删除API
+    await deleteTask(taskId);
+    // 服务端删除成功，删除本地数据
+    store.deleteTask(taskId);
+    return true;
+  } catch (error) {
+    console.error(`删除任务${taskId}失败:`, error);
+    // 如果是404错误（任务不存在），直接删除本地数据
+    if (error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found')) {
+      store.deleteTask(taskId);
+      return true;
+    }
+    // 其他错误（网络中断、服务端错误等），保留本地数据
+    return false;
+  }
+};
+
 // 删除单个历史任务
 const deleteHistoricalTask = async (taskId) => {
   try {
@@ -237,27 +262,12 @@ const deleteHistoricalTask = async (taskId) => {
       type: 'warning',
     });
 
-    // 获取要删除的任务
-    const task = store.getTask(taskId);
-    if (task) {
-      // 如果任务处在release环节，需要给服务端发消息
-      if (task.progress === 'release') {
-        // 通知服务端删除任务
-        try {
-          await deleteTask(taskId);
-        } catch (error) {
-          console.error(`删除任务${taskId}失败:`, error);
-          // 如果任务已删除或不存在，仍继续执行后续逻辑
-          if (!(error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found'))) {
-            throw error;
-          }
-        }
-      }
-
-      // 从store中删除任务
-      store.deleteTask(taskId);
-
+    const success = await deleteSingleTask(taskId);
+    if (success) {
       ElMessage.success('任务已删除');
+      // 不需要手动调用loadHistoricalData，watch监听器会自动处理数据更新
+    } else {
+      ElMessage.error('删除任务失败，请检查网络连接或稍后重试');
     }
   } catch (error) {
     // 用户取消删除
@@ -279,29 +289,22 @@ const clearHistory = async () => {
     // 获取所有历史任务
     const allTasks = [...store.tasks];
     
-    // 筛选出状态为release的任务并通知服务端删除
+    // 记录删除失败的任务数
+    let failedCount = 0;
+    
+    // 逐个删除任务
     for (const task of allTasks) {
-      if (task.progress === 'release') {
-        try {
-          await deleteTask(task.taskId);
-        } catch (error) {
-          console.error(`删除任务${task.taskId}失败:`, error);
-          // 如果任务已删除或不存在，仍继续执行后续逻辑
-          if (!(error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found'))) {
-            // 非404错误需要记录，但继续处理其他任务
-            console.error('非404错误:', error);
-          }
-        }
+      const success = await deleteSingleTask(task.taskId);
+      if (!success) {
+        failedCount++;
       }
     }
 
-    // 清除store中的数据
-    store.clearAll();
-
-    // 清空历史表格列表
-    historicalTables.value = [];
-
-    ElMessage.success('历史记录已清除');
+    if (failedCount > 0) {
+      ElMessage.error(`部分任务删除失败（${failedCount}个），请检查网络连接或稍后重试`);
+    } else {
+      ElMessage.success('历史记录已清除');
+    }
   } catch (error) {
     // 用户取消清除
     if (error !== 'cancel') {
@@ -311,7 +314,7 @@ const clearHistory = async () => {
 };
 
 // 加载历史表格数据
-const loadHistoricalData = async () => {
+const loadHistoricalData = async (deleteNonExistent = true) => {
   // 清空当前历史记录
   historicalTables.value = [];
 
@@ -338,9 +341,14 @@ const loadHistoricalData = async () => {
         // 任务存在，添加到历史记录列表
         historicalTables.value.push(historicalItem);
       } catch (error) {
-        // 任务不存在，从本地删除
-        console.log(`任务 ${task.taskId} 不存在，从本地删除`);
-        store.deleteTask(task.taskId);
+        // 任务不存在且允许删除，从本地删除
+        if (deleteNonExistent) {
+          console.log(`任务 ${task.taskId} 不存在，从本地删除`);
+          store.deleteTask(task.taskId);
+        } else {
+          // 不允许删除时，仍然添加到历史记录列表
+          historicalTables.value.push(historicalItem);
+        }
       }
     } else {
       // 非已发布任务，直接添加到历史记录列表

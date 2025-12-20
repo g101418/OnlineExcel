@@ -59,8 +59,8 @@
 
       <!-- 添加操作按钮 -->
       <div class="actions">
-        <el-button type="primary" @click="saveSettingsAndRelease">保存设置并发布</el-button>
-        <el-button @click="goToTaskGeneration">返回生成表格</el-button>
+        <el-button type="primary" @click="saveSettingsAndRelease">上传表格并发布任务</el-button>
+        <el-button @click="goToTaskGeneration">返回拆分表格</el-button>
       </div>
     </div>
 
@@ -200,38 +200,38 @@ const fetchSplitTables = async () => {
     }
 
     // 不拆分的情况：直接使用完整数据作为一个表格
-      if (!split.value) {
-        const headers = currentTask.value.uploadedHeaders;
-        const data = currentTask.value.uploadedData;
+    if (!split.value) {
+      const headers = currentTask.value.uploadedHeaders;
+      const data = currentTask.value.uploadedData;
 
-        if (headers.length > 0 && data.length > 0) {
-          // 将二维数组转换为对象数组
-          const formattedData = data.map(row => {
-            const obj = {};
-            headers.forEach((hd, idx) => {
-              obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
-            });
-            return obj;
+      if (headers.length > 0 && data.length > 0) {
+        // 将二维数组转换为对象数组
+        const formattedData = data.map(row => {
+          const obj = {};
+          headers.forEach((hd, idx) => {
+            obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
           });
+          return obj;
+        });
 
-          // 不拆分时：默认显示所有列
-          const columnsToShow = headers;
-          
-          splitTables.value = [{
-            name: fileName.value || "未命名表格",
-            rowCount: data.length,
-            data: formattedData,
-            columns: columnsToShow.map(header => ({
-              prop: header,
-              label: header,
-              width: 120
-            }))
-          }];
-        } else {
-          splitTables.value = [];
-        }
-        return;
+        // 不拆分时：默认显示所有列
+        const columnsToShow = headers;
+
+        splitTables.value = [{
+          name: fileName.value || "未命名表格",
+          rowCount: data.length,
+          data: formattedData,
+          columns: columnsToShow.map(header => ({
+            prop: header,
+            label: header,
+            width: 120
+          }))
+        }];
+      } else {
+        splitTables.value = [];
       }
+      return;
+    }
 
     // 拆分的情况：使用拆分后的数据
     if (!header.value) {
@@ -253,7 +253,7 @@ const fetchSplitTables = async () => {
 
         // 查看表格时始终显示所有列，无论是否拆分
         const columnsToShow = item.headers;
-        
+
         return {
           name: item.sheetName,
           rowCount: item.data.length,
@@ -310,120 +310,120 @@ const goToTaskGeneration = async () => {
 const goHome = () => router.push({ path: "/" });
 
 const saveSettingsAndRelease = async () => {
-    // 验证任务信息
-    if (!validateTaskInfo()) {
-      return;
+  // 验证任务信息
+  if (!validateTaskInfo()) {
+    return;
+  }
+
+  try {
+    // 生成表格随机编码
+    const generateTableCode = (table, index) => {
+      const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
+      const tableIdentifier = table.name || `table_${index}`;
+      const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
+      return SparkMD5.hash(metaStr).slice(0, 28);
+    };
+
+    // 为所有表格生成随机编码并保存到store
+    const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
+    // 保存到store时保留完整信息，方便前端使用
+    const tableLinks = splitTables.value.map((table, index) => ({
+      name: table.name,
+      code: tableCodes[index]
+    }));
+    store.setTableLinks(taskId.value, tableLinks);
+    // 将任务名称和截止日期保存到store
+    store.setTaskName(taskId.value, taskForm.taskName);
+    store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
+
+    // 更新本地store的splitData
+    let updatedSplitData = [];
+    if (!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0) {
+      // 未拆分的情况：使用完整数据作为一个表格
+      updatedSplitData = [{
+        sheetName: currentTask.value.fileName || '未拆分表格',
+        data: currentTask.value.uploadedData,
+        headers: currentTask.value.uploadedHeaders
+      }];
+    } else if (currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0) {
+      // 已拆分的情况：使用现有的splitData
+      updatedSplitData = currentTask.value.splitData;
     }
-
-    try {
-      // 生成表格随机编码
-      const generateTableCode = (table, index) => {
-        const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
-        const tableIdentifier = table.name || `table_${index}`;
-        const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
-        return SparkMD5.hash(metaStr).slice(0, 28);
-      };
-
-      // 为所有表格生成随机编码并保存到store
-      const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
-      // 保存到store时保留完整信息，方便前端使用
-      const tableLinks = splitTables.value.map((table, index) => ({
-        name: table.name,
-        code: tableCodes[index]
-      }));
-      store.setTableLinks(taskId.value, tableLinks);
-      // 将任务名称和截止日期保存到store
-      store.setTaskName(taskId.value, taskForm.taskName);
-      store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
-      
-      // 更新本地store的splitData
-      let updatedSplitData = [];
-      if (!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0) {
-        // 未拆分的情况：使用完整数据作为一个表格
-        updatedSplitData = [{
-          sheetName: currentTask.value.fileName || '未拆分表格',
-          data: currentTask.value.uploadedData,
-          headers: currentTask.value.uploadedHeaders
-        }];
-      } else if (currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0) {
-        // 已拆分的情况：使用现有的splitData
-        updatedSplitData = currentTask.value.splitData;
-      }
-      // 更新store中的splitData
-      if (updatedSplitData.length > 0) {
-        const task = store.tasks.find(task => task.taskId === taskId.value);
-        if (task) {
-          task.splitData = updatedSplitData;
-          // 手动保存状态到本地存储
-          saveState(store.$state);
-        }
-      }
-
-    // 更新本地store的progress状态为release
-      store.setProgress(taskId.value, 'release');
-      
-      // 检查并清理不可编辑列的权限
-      if (currentTask.value?.permissions?.columns) {
-        // 深拷贝columns数组，避免直接修改store
-        const cleanedColumns = [...currentTask.value.permissions.columns];
-        
-        // 遍历所有列，清理不可编辑列的权限
-        cleanedColumns.forEach(column => {
-          if (!column.editable) {
-            column.validation = getEmptyValidation();
-          }
-        });
-        
-        // 更新store中的权限数据
-        currentTask.value.permissions.columns = cleanedColumns;
-        // 保存到本地存储
+    // 更新store中的splitData
+    if (updatedSplitData.length > 0) {
+      const task = store.tasks.find(task => task.taskId === taskId.value);
+      if (task) {
+        task.splitData = updatedSplitData;
+        // 手动保存状态到本地存储
         saveState(store.$state);
       }
-      
-      // 准备发送到服务端的数据
-      const taskData = {
-        // 任务基本信息
+    }
+
+    // 更新本地store的progress状态为release
+    store.setProgress(taskId.value, 'release');
+
+    // 检查并清理不可编辑列的权限
+    if (currentTask.value?.permissions?.columns) {
+      // 深拷贝columns数组，避免直接修改store
+      const cleanedColumns = [...currentTask.value.permissions.columns];
+
+      // 遍历所有列，清理不可编辑列的权限
+      cleanedColumns.forEach(column => {
+        if (!column.editable) {
+          column.validation = getEmptyValidation();
+        }
+      });
+
+      // 更新store中的权限数据
+      currentTask.value.permissions.columns = cleanedColumns;
+      // 保存到本地存储
+      saveState(store.$state);
+    }
+
+    // 准备发送到服务端的数据
+    const taskData = {
+      // 任务基本信息
       taskId: taskId.value,
       fileName: fileName.value,
       taskName: taskForm.taskName,
       taskDeadline: taskForm.taskDeadline,
       formDescription: taskForm.formDescription,
       updateTime: currentTask.value?.updateTime || new Date().toISOString(),
-        
-        // 上传的数据
-        uploadedHeaders: currentTask.value?.uploadedHeaders || [],
-        uploadedData: currentTask.value?.uploadedData || [],
-        
-        // 拆分相关信息
-        splitEnabled: currentTask.value?.splitEnabled || false,
-        selectedHeader: currentTask.value?.selectedHeader || '',
-        split: split.value,
-        header: header.value,
-        
-        // 确保未拆分的表格也有splitData数据
-        ...(!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0 && {
-          splitData: [{
-            sheetName: currentTask.value.fileName || '未拆分表格',
-            data: currentTask.value.uploadedData,
-            headers: currentTask.value.uploadedHeaders
-          }]
-        }),
-        // 拆分后的表格数据（如果已经有拆分数据，会覆盖上面的默认值）
-        ...(currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0 && {
-          splitData: currentTask.value.splitData
-        }),
-      
+
+      // 上传的数据
+      uploadedHeaders: currentTask.value?.uploadedHeaders || [],
+      uploadedData: currentTask.value?.uploadedData || [],
+
+      // 拆分相关信息
+      splitEnabled: currentTask.value?.splitEnabled || false,
+      selectedHeader: currentTask.value?.selectedHeader || '',
+      split: split.value,
+      header: header.value,
+
+      // 确保未拆分的表格也有splitData数据
+      ...(!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0 && {
+        splitData: [{
+          sheetName: currentTask.value.fileName || '未拆分表格',
+          data: currentTask.value.uploadedData,
+          headers: currentTask.value.uploadedHeaders
+        }]
+      }),
+      // 拆分后的表格数据（如果已经有拆分数据，会覆盖上面的默认值）
+      ...(currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0 && {
+        splitData: currentTask.value.splitData
+      }),
+
       // 生成的表格链接（发送包含code和name的对象数组，以便后端创建table_fillings记录）
       tableLinks: tableLinks,
-      
+
       // 权限设置
       permissions: currentTask.value?.permissions || { row: {}, columns: [] },
-      
+
       // 面板折叠状态
       permissionPanelCollapsed: currentTask.value?.permissionPanelCollapsed || false,
-      
+
       // 处理进度状态 - 发送到服务端时设置为release
-        progress: 'release'
+      progress: 'release'
     };
 
     // 调用API保存设置到服务端

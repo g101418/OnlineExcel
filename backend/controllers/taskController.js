@@ -1,23 +1,31 @@
 import * as taskService from '../services/taskService.js';
 import { createError, ERROR_TYPES } from '../utils/errorHandler.js';
+import logger from '../utils/logger.js';
 
 // 1. 接受用户上传的任务（含表格）
 const saveTask = (req, res, next) => {
   const taskData = req.body;
   
   if (!taskData.taskId || !taskData.taskName || !taskData.fileName || !taskData.uploadedHeaders || !taskData.uploadedData || !taskData.permissions) {
+    logger.warn('Required fields are missing in task submission', { taskData }, req);
     return next(createError(ERROR_TYPES.VALIDATION, 'Required fields are missing'));
   }
   
+  logger.info('Saving task data', { taskId: taskData.taskId, taskName: taskData.taskName }, req);
+  
   taskService.saveTask(taskData, (err, result) => {
     if (err) {
+      logger.error('Failed to save task', { error: err.message, taskId: taskData.taskId }, req);
       return next(createError(ERROR_TYPES.DATABASE, err.message, err));
     }
     
     // 任务已存在的情况
     if (result.message === 'Task already exists') {
+      logger.warn('Task already exists', { taskId: taskData.taskId }, req);
       return next(createError(ERROR_TYPES.CONFLICT, '任务已经存在'));
     }
+    
+    logger.info('Task saved successfully', { taskId: taskData.taskId, resultId: result.id }, req);
     
     res.status(201).json({
       id: result.id,
@@ -33,14 +41,20 @@ const saveTask = (req, res, next) => {
 const getTaskReleaseData = (req, res, next) => {
   const taskId = req.params.taskId;
   
+  logger.info('Fetching task release data', { taskId }, req);
+  
   taskService.getTaskReleaseData(taskId, (err, task) => {
     if (err) {
+      logger.error('Failed to fetch task release data', { error: err.message, taskId }, req);
       return next(createError(ERROR_TYPES.DATABASE, err.message, err));
     }
     
     if (!task) {
+      logger.warn('Task not found', { taskId }, req);
       return next(createError(ERROR_TYPES.NOT_FOUND, 'Task not found'));
     }
+    
+    logger.info('Task release data fetched successfully', { taskId }, req);
     
     res.status(200).json(task);
   });
@@ -52,20 +66,27 @@ const submitTask = (req, res, next) => {
   const { tableData, isDraft } = req.body;
   
   if (!tableData) {
+    logger.warn('Table data is required for submission', { linkCode }, req);
     return next(createError(ERROR_TYPES.VALIDATION, 'Table data is required'));
   }
   
   // 对于草稿和提交，使用不同的状态
   const status = isDraft ? 'in_progress' : 'submitted';
   
+  logger.info(`Submitting ${status === 'in_progress' ? 'draft' : 'completed'} task`, { linkCode }, req);
+  
   taskService.submitTask(linkCode, tableData, status, (err, result) => {
     if (err) {
+      logger.error(`Failed to submit ${status === 'in_progress' ? 'draft' : 'completed'} task`, { error: err.message, linkCode }, req);
       return next(createError(ERROR_TYPES.DATABASE, err.message, err));
     }
     
     if (!result) {
+      logger.warn('Task not found for submission', { linkCode }, req);
       return next(createError(ERROR_TYPES.NOT_FOUND, 'Task not found'));
     }
+    
+    logger.info(`${status === 'in_progress' ? 'Draft' : 'Submission'} saved successfully`, { linkCode, resultId: result.id }, req);
     
     res.status(200).json({
       linkCode,

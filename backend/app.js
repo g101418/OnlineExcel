@@ -6,6 +6,7 @@ import rateLimiter from './utils/rate-limit.js';
 import redirectLocalhost from './utils/localhost-redirector.js';
 import securityHeaders from './utils/security-headers.js';
 import { errorHandler } from './utils/errorHandler.js';
+import logger from './utils/logger.js';
 
 import path from 'path';
 import os from 'os';
@@ -53,5 +54,5 @@ app.use(errorHandler);
 
 // 服务器启动
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on http://0.0.0.0:${PORT}`);
+  logger.info(`Server is running on http://0.0.0.0:${PORT}`);
 });

@@ -1,4 +1,5 @@
 import db from '../db.js';
+import logger from '../utils/logger.js';
 
 // 检查任务是否超期，并更新状态
 const checkAndUpdateTaskOverdue = (taskId, callback) => {
@@ -124,10 +125,13 @@ const saveTask = (taskData, callback) => {
     formDescription = ''
   } = taskData;
 
+  logger.info('Saving task data in service', { taskId, taskName, fileName });
+
   // 先检查taskId是否已经存在
   const checkSql = `SELECT id FROM tasks WHERE taskId = ?`;
   db.get(checkSql, [taskId], (err, existingTask) => {
     if (err) {
+      logger.error('Failed to check task existence', { error: err.message, taskId });
       return callback(err);
     }
 
@@ -166,16 +170,22 @@ const saveTask = (taskData, callback) => {
 
     db.run(sql, params, function (err) {
       if (err) {
+        logger.error('Failed to insert task into database', { error: err.message, taskId });
         return callback(err);
       }
+      
+      logger.debug('Task inserted into database', { taskId, insertedId: this.lastID });
 
       // 无论插入还是更新，都需要先删除原有子任务，然后创建新的子任务
       // 先删除与任务相关的表格填报任务
       const deleteFillingTasksSql = `DELETE FROM table_fillings WHERE original_task_id = ?`;
       db.run(deleteFillingTasksSql, [taskId], (err) => {
         if (err) {
+          logger.error('Failed to delete existing filling tasks', { error: err.message, taskId });
           return callback(err);
         }
+        
+        logger.debug('Deleted existing filling tasks', { taskId });
 
         // 然后创建新的表格填报任务
         const insertFillingTask = (index, callback) => {
@@ -202,8 +212,11 @@ const saveTask = (taskData, callback) => {
             false
           ], function (err) {
             if (err) {
+              logger.error('Failed to create filling task', { error: err.message, taskId, fillingTaskId: tableLink.code });
               return callback(err);
             }
+            
+            logger.debug('Created filling task', { taskId, fillingTaskId: tableLink.code });
 
             // 继续创建下一个表格填报任务
             insertFillingTask(index + 1, callback);
@@ -233,21 +246,28 @@ const saveTask = (taskData, callback) => {
 
 // 获取任务发布数据
 const getTaskReleaseData = (taskId, callback) => {
+  logger.info('Getting task release data in service', { taskId });
+  
   // 先检查并更新任务是否超期
   checkAndUpdateTaskOverdue(taskId, (err) => {
     if (err) {
+      logger.error('Failed to check task overdue status', { error: err.message, taskId });
       return callback(err);
     }
 
     const sql = `SELECT * FROM tasks WHERE taskId = ?`;
     db.get(sql, [taskId], (err, task) => {
       if (err) {
+        logger.error('Failed to fetch task data from database', { error: err.message, taskId });
         return callback(err);
       }
 
       if (!task) {
+        logger.warn('Task not found in database', { taskId });
         return callback(new Error('Task not found'));
       }
+      
+      logger.debug('Task data fetched successfully', { taskId });
 
       // 解析JSON数据
       task.uploadedHeaders = JSON.parse(task.uploadedHeaders);
@@ -413,9 +433,12 @@ const getSubTaskStatuses = (taskId, callback) => {
 
 // 提交任务（暂存、提交填报的表格数据）
 const submitTask = (linkCode, tableData, status, callback) => {
+  logger.info('Submitting task in service', { linkCode, status });
+  
   // 先检测主任务是否逾期，再检查子任务豁免状态
   checkTaskOverdueAndPermission(linkCode, (err) => {
     if (err) {
+      logger.error('Failed to check task overdue permission', { error: err.message, linkCode });
       return callback(err);
     }
 
@@ -423,19 +446,26 @@ const submitTask = (linkCode, tableData, status, callback) => {
     const checkFillingTaskSql = `SELECT * FROM table_fillings WHERE filling_task_id = ?`;
     db.get(checkFillingTaskSql, [linkCode], (err, fillingTask) => {
       if (err) {
+        logger.error('Failed to check filling task existence', { error: err.message, linkCode });
         return callback(err);
       }
 
       if (!fillingTask) {
+        logger.warn('Filling task not found', { linkCode });
         return callback(new Error('Filling task not found'));
       }
+      
+      logger.debug('Filling task found', { linkCode, originalTaskId: fillingTask.original_task_id });
 
       // 更新表格填报数据
       const updateFillingTaskSql = `UPDATE table_fillings SET modified_table_data = ?, filling_status = ?, updated_at = CURRENT_TIMESTAMP WHERE filling_task_id = ?`;
       db.run(updateFillingTaskSql, [JSON.stringify(tableData), status, linkCode], function (err) {
         if (err) {
+          logger.error('Failed to update filling task', { error: err.message, linkCode, status });
           return callback(err);
         }
+        
+        logger.info('Filling task updated successfully', { linkCode, status, changes: this.changes });
 
         callback(null, {
           id: this.lastID,
@@ -519,22 +549,30 @@ const withdrawTask = (taskId, callback) => {
 
 // 删除任务及相关的表格填报任务
 const deleteTask = (taskId, callback) => {
+  logger.info('Deleting task and related filling tasks', { taskId });
+  
   // 开始事务
   db.serialize(() => {
     // 先删除与任务相关的表格填报任务
     const deleteFillingTasksSql = `DELETE FROM table_fillings WHERE original_task_id = ?`;
     db.run(deleteFillingTasksSql, [taskId], (err) => {
       if (err) {
+        logger.error('Failed to delete filling tasks', { error: err.message, taskId });
         return callback(err);
       }
+      
+      logger.debug('Deleted filling tasks for task', { taskId });
     });
 
     // 最后删除任务本身
     const deleteTaskSql = `DELETE FROM tasks WHERE taskId = ?`;
     db.run(deleteTaskSql, [taskId], function (err) {
       if (err) {
+        logger.error('Failed to delete task', { error: err.message, taskId });
         return callback(err);
       }
+      
+      logger.info('Task deleted successfully', { taskId, changes: this.changes });
 
       callback(null, {
         taskId,
@@ -637,7 +675,7 @@ const checkIdExists = (id, callback) => {
       }
 
       // 不存在，返回错误
-      callback(new Error("ID not found"));
+      callback(new Error("未找到任务ID，可能已经删除或未发布"));
     });
   } else if (id.length === 28) {
     // 30位ID，查询子任务表
@@ -653,11 +691,11 @@ const checkIdExists = (id, callback) => {
       }
 
       // 不存在，返回错误
-      callback(new Error("ID not found"));
+      callback(new Error("未找到任务ID，可能已经删除或未发布"));
     });
   } else {
     // 长度不符合要求，直接返回错误
-    callback(new Error("Invalid ID length"));
+    callback(new Error("ID长度错误"));
   }
 };
 
