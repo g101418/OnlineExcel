@@ -168,7 +168,8 @@ const formatDate = (dateString) => {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    second: '2-digit'
   });
 };
 
@@ -891,6 +892,19 @@ onMounted(() => {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+/* 响应式设计：页面窄时按钮纵向排列 */
+@media (max-width: 980px) {
+  .header-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  /* 纵向排列时隐藏垂直分割线 */
+  .header-buttons .el-divider {
+    display: none;
+  }
 }
 
 .copy-clickable {

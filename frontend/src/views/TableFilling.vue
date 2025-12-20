@@ -11,7 +11,7 @@
                     </el-tooltip>
                 </p>
                 <p>
-                    <strong>截止日期：</strong>
+                    <strong>截止时间：</strong>
                     {{ formatDate(taskInfo.taskDeadline) }}
                 </p>
                 <p>
@@ -133,7 +133,14 @@ const copyTaskId = async (textToCopy: string) => {
 }
 const formatDate = (d: string) => {
     if (!d) return ''
-    return new Date(d).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    return new Date(d).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    })
 }
 const getFillingStatusType = () => {
     if (taskInfo.fillingStatus === 'submitted') return 'success'
@@ -157,7 +164,7 @@ const permissionTooltipContent = computed(() => {
         'idcard': '身份证号',
         'email': '邮箱',
         'url': '网址',
-        'custom': '自定义格式'
+        'custom': '特定格式'
     }
     let content = '<div style="max-width: 450px; line-height: 1.6;">'
     content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px;">列填报规则：</h4>'
@@ -243,11 +250,30 @@ function getValidationError(value: any, perm: any): string | null {
         if (max != null && num > max) return `不能大于 ${max}`
     }
     else if (type === 'date') {
+
         if (format === 'yyyy年mm月dd日') {
             const match = v.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-            if (match) v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
         }
-        const d = new Date(v)
+        else if (format === 'yyyy-mm-dd') {
+            const match = v.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
+        }
+        else if (format === 'yyyy/mm/dd') {
+            const match = v.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
+        }
+        else if (format === 'yyyy.mm.dd') {
+            const match = v.match(/(\d{4})\.(\d{1,2})\.(\d{1,2})/);
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
+        }
+
+        const d = new Date(`${v}T00:00:00+08:00`);
+        console.log(d, d.getTime())
         if (isNaN(d.getTime())) return '日期格式不正确'
         if (min && d < new Date(min)) return `不能早于 ${new Date(min).toLocaleDateString()}`
         if (max && d > new Date(max)) return `不能晚于 ${new Date(max).toLocaleDateString()}`
@@ -358,7 +384,7 @@ const hotSettings = computed(() => ({
         const sourceData = hot.getDataAtRow(sourceRowIndex);
         const changes: any[] = [];
         permissions.columns.forEach((perm, colIndex) => {
-            if (perm && !perm.editable) {
+            if (perm && !perm.editable && perm.required) {
                 const valueToCopy = sourceData[colIndex];
                 for (let i = 0; i < amount; i++) {
                     changes.push([index + i, colIndex, valueToCopy]);

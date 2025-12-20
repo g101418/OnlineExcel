@@ -60,3 +60,15 @@ export const getDefaultPermissions = () => {
     columns: []
   };
 };
+
+export const getEmptyValidation = () => ({
+  type: "",
+  min: null,
+  max: null,
+  maxLength: null,
+  options: [],
+  isInteger: false,
+  regex: "",
+  regexName: "",
+  format: ""
+});

@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const taskController = require('../controllers/taskController');
+import * as taskController from '../controllers/taskController.js';
 
 // ====================== /api/task/ ======================
 // 针对整个task任务的操作，可能涉及多个拆分后表格
@@ -59,4 +59,4 @@ router.get('/task/check_overdue/:taskId', taskController.checkTaskOverdue);
 // 14. 查询单个子项目的豁免情况
 router.get('/table-filling/check_overdue/:linkCode', taskController.checkSubTaskOverdue);
 
-module.exports = router;
+export default router;

@@ -93,8 +93,8 @@ import SparkMD5 from "spark-md5";
 import { ElMessage } from "element-plus";
 // 导入API
 import { saveTaskSettings, getTaskData } from "../api/task";
-// 导入默认权限函数
-import { getDefaultPermissions } from "../hooks/tablePermission";
+// 导入默认权限函数和空验证函数
+import { getDefaultPermissions, getEmptyValidation } from "../hooks/tablePermission";
 
 const router = useRouter();
 const route = useRoute();
@@ -359,8 +359,26 @@ const saveSettingsAndRelease = async () => {
         }
       }
 
-    // 更新本地store的进度状态为release
+    // 更新本地store的progress状态为release
       store.setProgress(taskId.value, 'release');
+      
+      // 检查并清理不可编辑列的权限
+      if (currentTask.value?.permissions?.columns) {
+        // 深拷贝columns数组，避免直接修改store
+        const cleanedColumns = [...currentTask.value.permissions.columns];
+        
+        // 遍历所有列，清理不可编辑列的权限
+        cleanedColumns.forEach(column => {
+          if (!column.editable) {
+            column.validation = getEmptyValidation();
+          }
+        });
+        
+        // 更新store中的权限数据
+        currentTask.value.permissions.columns = cleanedColumns;
+        // 保存到本地存储
+        saveState(store.$state);
+      }
       
       // 准备发送到服务端的数据
       const taskData = {
