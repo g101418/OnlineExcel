@@ -79,9 +79,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElTooltip, ElDivider } from 'element-plus'
+import { ElMessage, ElTooltip, ElDivider, ElMessageBox } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
@@ -317,9 +317,10 @@ const hotSettings = computed(() => ({
     rowHeaders: true,
     colHeaders: originalHeaders.value,
 
-    // 【问题4 修复】固定为1，不依赖 tableData.length。
-    // 否则当数据删光时，Handsontable会为了满足最小行数自动补一行空行
+    // 1. 基础行数限制
     minRows: 1,
+    // 2. 权限控制：如果没权限新增，锁死 maxRows；如果有权限，设为 undefined (由下方 beforePaste 控制粘贴不扩展)
+    maxRows: permissions.row.addable ? undefined : Math.max(tableData.value.length, 1),
 
     rowHeights: 36,
     autoWrapRow: true,
@@ -339,19 +340,64 @@ const hotSettings = computed(() => ({
     }) : [],
 
     comments: true,
-    copyPaste: true,
+    copyPaste: {
+        pasteMode: 'overwrite'
+    },
     manualRowMove: permissions.row.sortable,
 
-    // 【问题1 修复】使用 hidden 回调函数，实时判断权限
     contextMenu: {
         items: {
-            'row_above': { name: '在上方插入行', hidden: () => !permissions.row.addable },
-            'row_below': { name: '在下方插入行', hidden: () => !permissions.row.addable },
+            'row_above': { name: '在上方插入单行', hidden: () => !permissions.row.addable },
+            'row_below': { name: '在下方插入单行', hidden: () => !permissions.row.addable },
+            // --- 新增：批量插入行 ---
+            'add_multiple_rows': {
+                name: '批量插入多行...',
+                hidden: () => !permissions.row.addable,
+                callback: function (key, selection) {
+                    const hot = this;
+                    const startRow = selection[0].start.row;
+
+                    // 统一定义执行逻辑，避免重复代码
+                    const executeInsert = (countStr: string) => {
+                        const count = parseInt(countStr);
+                        if (count > 0) {
+                            hot.alter('insert_row_below', startRow, count);
+                            // 这里不需要写填充逻辑，因为 alter 会自动触发 afterCreateRow 钩子
+                        }
+                        ElMessageBox.close(); // 执行完后关闭弹窗
+                    };
+
+                    ElMessageBox({
+                        title: '批量增加行',
+                        message: () => h('div', null, [
+                            h('p', { style: 'margin-bottom: 10px' }, '请输入要增加的行数：'),
+                            h('div', { class: 'quick-add-btns', style: 'display: flex; gap: 8px; margin-top: 10px' },
+                                [5, 10, 20, 50].map(num => h('button', {
+                                    class: 'el-button el-button--small el-button--primary is-plain',
+                                    // ⭐ 关键修复：点击按钮直接执行逻辑，绕过输入框状态同步问题
+                                    onClick: (e: Event) => {
+                                        e.preventDefault();
+                                        executeInsert(String(num));
+                                    }
+                                }, `+${num} 行`))
+                            )
+                        ]),
+                        showInput: true,
+                        inputValue: '1',
+                        inputPattern: /^[1-9]\d*$/,
+                        inputErrorMessage: '请输入大于0的正整数',
+                        showCancelButton: true,
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                    }).then(({ value }) => {
+                        // 这里的 value 是输入框里手动输入的数字
+                        executeInsert(value);
+                    }).catch(() => { });
+                }
+            },
             'hsep1': '---------',
             'remove_row': { name: '删除行', hidden: () => !permissions.row.deletable },
-            'hsep2': '---------',
-            'undo': { name: '撤销' },
-            'redo': { name: '重做' }
+            // ... 其他菜单项 ...
         }
     },
 
@@ -359,48 +405,43 @@ const hotSettings = computed(() => ({
         this.validateCells();
     },
 
-    // 校验回调：只负责更新 errors 对象
-    afterValidate: function (isValid: boolean, value: any, row: number, prop: number | string) {
-        const col = typeof prop === 'string' ? this.propToCol(prop) : prop;
-        const key = `${row},${col}`;
+    // 【核心修复 1】在此拦截粘贴，物理禁止粘贴自动扩展行
+    beforePaste: function (data: any[][], coords: any[]) {
+        const hot = this;
+        // 只有在允许新增行时才需要手动拦截（因为不允许时 maxRows 已经拦截了）
+        // 但为了逻辑统一，我们可以总是执行这个检查
 
-        if (isValid) {
-            if (errors.value[key]) {
-                // 使用解构赋值触发 Vue 响应式更新
-                const newErrors = { ...errors.value };
-                delete newErrors[key];
-                errors.value = newErrors;
-            }
-        } else {
-            const perm = permissions.columns[col];
-            const error = getValidationError(value, perm);
-            if (error) {
-                errors.value = { ...errors.value, [key]: error };
-            }
+        const startRow = coords[0].startRow;
+        const totalRows = hot.countRows();
+        const availableRows = totalRows - startRow;
+
+        // 如果粘贴的数据行数 > 剩余可用行数
+        if (data.length > availableRows) {
+            // 直接截断数据数组，只保留能放得下的部分
+            // splice 会修改原数组，Handsontable 接收到的将是截断后的数据
+            data.splice(availableRows);
+
+            // 可选：提示用户
+            ElMessage.warning('粘贴内容超出表格行数，多余行已自动忽略，如需填写请先手动新增行。');
         }
+
+        // 返回 true 继续执行粘贴（使用的是被裁切后的 data）
+        return true;
     },
 
-    // 【问题2 & 3 终极修复】
+    // 核心修复后的 afterCreateRow (增强兼容性)
     afterCreateRow: function (index: number, amount: number) {
         const hot = this;
-
-        // 1. 寻找数据源
-        let sourceRowIndex = -1;
-        if (index > 0) {
-            sourceRowIndex = index - 1;
-        } else if (index + amount < hot.countRows()) {
-            sourceRowIndex = index + amount;
-        }
-
+        // 1. 确定参考行：优先取新行上方的行
+        let sourceRowIndex = index > 0 ? index - 1 : (index + amount < hot.countRows() ? index + amount : -1);
         if (sourceRowIndex === -1) return;
 
-        // 2. 构建填充数据
         const sourceData = hot.getDataAtRow(sourceRowIndex);
         const changes: any[] = [];
 
+        // 2. 遍历列权限，找出不可编辑的列进行拷贝
         permissions.columns.forEach((perm, colIndex) => {
-            // 只要是不可编辑列，就自动填充值
-            if (!perm?.editable) {
+            if (perm && !perm.editable) {
                 const valueToCopy = sourceData[colIndex];
                 for (let i = 0; i < amount; i++) {
                     changes.push([index + i, colIndex, valueToCopy]);
@@ -408,35 +449,55 @@ const hotSettings = computed(() => ({
             }
         });
 
-        // 3. 填充数据并重置校验状态
         if (changes.length > 0) {
-            hot.setDataAtCell(changes);
-
-            // 强制重绘，确保内部数据与DOM同步
-            hot.render();
-
-            // 4. 【核心修复】：清空所有错误 + 延迟全表校验
-            // 为什么清空？因为插入行后，行索引变了，旧的 errors Key (如 "2,1") 可能已经失效或指向错误的行
-            // 必须清空 errors，让 validateCells 重新构建一份准确的错误清单
             setTimeout(() => {
-                errors.value = {};
-                hot.validateCells();
-            }, 100);
+                // 使用 'auto' 源，避免死循环
+                hot.setDataAtCell(changes, 'auto');
+
+                // 3. 清理错误状态并重新校验新行
+                for (let i = 0; i < amount; i++) {
+                    const row = index + i;
+                    permissions.columns.forEach((_, col) => {
+                        delete errors.value[`${row},${col}`];
+                    });
+                    // 逐行异步校验，确保红框消失
+                    hot.validateRow(row, () => { });
+                }
+            }, 50);
         }
     },
 
-    // 【问题4 补充修复】：删除行后，也要清空旧错误并重置校验
+    afterValidate: function (isValid: boolean, value: any, row: number, prop: number | string) {
+        const col = typeof prop === 'string' ? this.propToCol(prop) : prop;
+        const key = `${row},${col}`;
+
+        // 使用 shallow copy 触发 Vue 响应式更新
+        if (isValid) {
+            if (key in errors.value) {
+                const newErrors = { ...errors.value };
+                delete newErrors[key];
+                errors.value = newErrors;
+            }
+        } else {
+            const perm = permissions.columns[col];
+            const errorMsg = getValidationError(value, perm);
+            if (errorMsg) {
+                // 只有当错误信息确实变化时才更新，减少渲染压力
+                if (errors.value[key] !== errorMsg) {
+                    errors.value = { ...errors.value, [key]: errorMsg };
+                }
+            }
+        }
+    },
+
     afterRemoveRow: function () {
         const hot = this;
-        // 同样需要清空，防止被删除行的错误依然残留在 errors 中
         errors.value = {};
-        // 必须延迟，等待 DOM 移除完毕
         setTimeout(() => {
             hot.validateCells();
         }, 50);
     },
 
-    // 移动行后同样需要重置
     afterRowMove: function () {
         const hot = this;
         errors.value = {};
@@ -629,5 +690,17 @@ onMounted(async () => {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+
+:deep(.quick-add-btns) {
+    .el-button {
+        margin-right: 8px;
+        padding: 5px 12px;
+    }
+}
+
+/* 确保 Handsontable 弹出菜单不被遮挡 */
+:deep(.htContextMenu) {
+    z-index: 3000 !important;
 }
 </style>
