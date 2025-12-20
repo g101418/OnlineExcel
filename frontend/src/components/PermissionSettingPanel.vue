@@ -51,7 +51,8 @@
         <div class="column-basic-permissions">
           <label>
             <strong>{{ col.label }} </strong>
-            <el-checkbox v-model="col.editable" :disabled="split && header && col.label === header" @change="handleEditableChange(col)" />
+            <el-checkbox v-model="col.editable" :disabled="split && header && col.label === header"
+              @change="handleEditableChange(col)" />
             可编辑
           </label>
           <label class="required-option">
@@ -191,7 +192,7 @@ const initColumns = () => {
     localColumns.value = uploadedHeaders.value.map((h, index) => {
       // 检查是否是拆分字段列
       const isSplitColumn = split.value && header.value && h === header.value;
-      
+
       return {
         label: h,
         prop: h,
@@ -223,7 +224,9 @@ const initColumns = () => {
         column.validation = getEmptyValidation();
       } else {
         // 非拆分列默认可编辑
-        column.editable = true;
+        if (column.editable === undefined) {
+          column.editable = true;
+        }
       }
 
       if (column.validation && column.validation.type === 'options') {
