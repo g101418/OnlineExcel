@@ -240,6 +240,7 @@ const permissionTooltipContent = computed(() => {
     content += '</ul></div>'
     return content
 })
+
 function getValidationError(value: any, perm: any): string | null {
     if (!perm) return null
     let v = value == null ? '' : String(value).trim()
@@ -278,9 +279,18 @@ function getValidationError(value: any, perm: any): string | null {
             else return '日期格式不正确'
         }
 
-        const d = new Date(`${v}T00:00:00+08:00`);
-        console.log(d, d.getTime())
+        const [inputYear, inputMonth, inputDay] = v.split('-').map(Number);
+        const d = new Date(inputYear, inputMonth - 1, inputDay);
         if (isNaN(d.getTime())) return '日期格式不正确'
+
+        const parsedYear = d.getFullYear(); // 本地时区的年
+        const parsedMonth = d.getMonth() + 1; // 本地时区的月（还原为1-12）
+        const parsedDay = d.getDate(); // 本地时区的日
+
+        // 6. 所有条件匹配则返回Date对象，否则返回NaN
+        if (!(parsedYear === inputYear && parsedMonth === inputMonth && parsedDay === inputDay))
+            return '日期输入有误'
+
         if (min && d < new Date(min)) return `不能早于 ${new Date(min).toLocaleDateString()}`
         if (max && d > new Date(max)) return `不能晚于 ${new Date(max).toLocaleDateString()}`
     }

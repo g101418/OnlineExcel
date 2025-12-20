@@ -517,11 +517,15 @@ const downloadTable = async (table) => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, table.name);
 
-    // 生成文件名
-    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
-
-    // 导出Excel文件
-    XLSX.writeFile(workbook, exportFileName);
+    // 生成文件名 - 使用原始文件的扩展名
+    const fileExtension = fileName.value.split('.').pop() || 'xlsx';
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
+    
+    // 导出文件 - 处理不支持的格式
+    const bookType = ['et', 'xls'].includes(fileExtension.toLowerCase()) ? 'xlsx' : fileExtension.toLowerCase();
+    
+    // 导出文件
+    XLSX.writeFile(workbook, exportFileName, { bookType });
 
     // 关闭加载状态
     loading.close();
@@ -675,11 +679,15 @@ const exportAllTables = async () => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '汇总数据');
 
-    // 生成文件名
-    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
-
-    // 导出Excel文件
-    XLSX.writeFile(workbook, exportFileName);
+    // 生成文件名 - 使用原始文件的扩展名
+    const fileExtension = fileName.value.split('.').pop() || 'xlsx';
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
+    
+    // 导出文件 - 处理不支持的格式
+    const bookType = ['et', 'xls'].includes(fileExtension.toLowerCase()) ? 'xlsx' : fileExtension.toLowerCase();
+    
+    // 导出文件
+    XLSX.writeFile(workbook, exportFileName, { bookType });
 
     // 关闭加载状态
     loading.close();
