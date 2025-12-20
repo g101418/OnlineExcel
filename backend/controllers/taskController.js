@@ -15,9 +15,7 @@ const saveTask = (req, res) => {
     
     // 任务已存在的情况
     if (result.message === 'Task already exists') {
-      // 移除taskId，确保不返回给前端
-      const { taskId, ...restResult } = result;
-      return res.status(200).json({ ...restResult, message: 'Task already exists, request ignored' });
+      return res.status(409).json({ error: '任务已经存在' });
     }
     
     res.status(201).json({

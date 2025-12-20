@@ -106,67 +106,38 @@ exports.saveTask = (taskData, callback) => {
       return callback(err);
     }
     
-    // 执行插入或更新操作
-    let sql;
-    let params;
-    
+    // 如果任务已存在，直接返回错误
     if (existingTask) {
-      // 如果任务已存在，执行更新操作
-      sql = `UPDATE tasks SET 
-        taskName = ?, taskDeadline = ?, fileName = ?, uploadedHeaders = ?, uploadedData = ?, 
-        selectedHeader = ?, split = ?, header = ?, 
-        splitData = ?, permissions = ?, tableLinks = ?, 
-        updateTime = ?, splitEnabled = ?, permissionPanelCollapsed = ?, progress = ?, formDescription = ? 
-        WHERE taskId = ?`;
-      
-      params = [
-        taskName,
-        taskDeadline,
-        fileName,
-        JSON.stringify(uploadedHeaders),
-        JSON.stringify(uploadedData),
-        selectedHeader,
-        split,
-        header,
-        JSON.stringify(splitData),
-        JSON.stringify(permissions),
-        JSON.stringify(tableLinks),
-        JSON.stringify(taskData.updateTime || new Date().toISOString()),
-        taskData.splitEnabled || false,
-        taskData.permissionPanelCollapsed || false,
-        taskData.progress || 'generation',
-        formDescription,
-        taskId
-      ];
-    } else {
-      // 如果任务不存在，执行插入操作
-      sql = `INSERT INTO tasks (
-        taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
-        selectedHeader, split, header, 
-        splitData, permissions, tableLinks,
-        updateTime, splitEnabled, permissionPanelCollapsed, progress, formDescription
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-      
-      params = [
-        taskId,
-        taskName,
-        taskDeadline,
-        fileName,
-        JSON.stringify(uploadedHeaders),
-        JSON.stringify(uploadedData),
-        selectedHeader,
-        split,
-        header,
-        JSON.stringify(splitData),
-        JSON.stringify(permissions),
-        JSON.stringify(tableLinks),
-        JSON.stringify(taskData.updateTime || new Date().toISOString()),
-        taskData.splitEnabled || false,
-        taskData.permissionPanelCollapsed || false,
-        taskData.progress || 'generation',
-        formDescription
-      ];
+      return callback(null, { message: 'Task already exists' });
     }
+    
+    // 执行插入操作
+    const sql = `INSERT INTO tasks (
+      taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
+      selectedHeader, split, header, 
+      splitData, permissions, tableLinks,
+      updateTime, splitEnabled, permissionPanelCollapsed, progress, formDescription
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    
+    const params = [
+      taskId,
+      taskName,
+      taskDeadline,
+      fileName,
+      JSON.stringify(uploadedHeaders),
+      JSON.stringify(uploadedData),
+      selectedHeader,
+      split,
+      header,
+      JSON.stringify(splitData),
+      JSON.stringify(permissions),
+      JSON.stringify(tableLinks),
+      JSON.stringify(taskData.updateTime || new Date().toISOString()),
+      taskData.splitEnabled || false,
+      taskData.permissionPanelCollapsed || false,
+      taskData.progress || 'generation',
+      formDescription
+    ];
     
     db.run(sql, params, function(err) {
       if (err) {

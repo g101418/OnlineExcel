@@ -420,7 +420,9 @@ const saveSettingsAndRelease = async () => {
     ElMessage.success("任务设置已成功保存并提交到服务端");
   } catch (error) {
     console.error("保存任务设置失败:", error);
-    ElMessage.error("保存任务设置失败，请稍后重试");
+    // 提取后端返回的具体错误信息
+    const errorMessage = error.response?.data?.error || "保存任务设置失败，请稍后重试";
+    ElMessage.error(errorMessage);
   }
 };
 
