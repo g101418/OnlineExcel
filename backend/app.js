@@ -9,21 +9,21 @@ const os = require('os');
 const app = express();
 const PORT = 5090;
 
-// 获取服务器的实际IP地址
-function getServerIp() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return '127.0.0.1'; // 回退到本地地址
-}
+// // 获取服务器的实际IP地址
+// function getServerIp() {
+//   const interfaces = os.networkInterfaces();
+//   for (const name of Object.keys(interfaces)) {
+//     for (const iface of interfaces[name]) {
+//       if (iface.family === 'IPv4' && !iface.internal) {
+//         return iface.address;
+//       }
+//     }
+//   }
+//   return '127.0.0.1'; // 回退到本地地址
+// }
 
-const SERVER_IP = getServerIp();
-console.log(`Server IP address: ${SERVER_IP}`);
+// const SERVER_IP = getServerIp();
+// console.log(`Server IP address: ${SERVER_IP}`);
 
 // 限流配置 - 可根据需要调整
 const RATE_LIMIT_CONFIG = {
@@ -38,16 +38,16 @@ const RATE_LIMIT_CONFIG = {
 const limiter = rateLimit(RATE_LIMIT_CONFIG);
 
 // 重定向localhost请求到实际IP地址
-app.use((req, res, next) => {
-  const host = req.headers.host;
-  if (host && host.includes('localhost')) {
-    const protocol = req.secure ? 'https' : 'http';
-    const path = req.originalUrl;
-    const redirectUrl = `${protocol}://${SERVER_IP}:${PORT}${path}`;
-    return res.redirect(301, redirectUrl);
-  }
-  next();
-});
+// app.use((req, res, next) => {
+//   const host = req.headers.host;
+//   if (host && host.includes('localhost')) {
+//     const protocol = req.secure ? 'https' : 'http';
+//     const path = req.originalUrl;
+//     const redirectUrl = `${protocol}://${SERVER_IP}:${PORT}${path}`;
+//     return res.redirect(301, redirectUrl);
+//   }
+//   next();
+// });
 
 // 中间件配置
 app.use(cors());
