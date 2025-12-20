@@ -621,8 +621,8 @@ const fetchSplitTables = async () => {
 
     // 检查是否有taskId
     if (!route.query.taskId) {
-      ElMessage.error("缺少必要的任务ID参数");
-      isTaskValid.value = false;
+      // 缺少taskId，直接跳转到error页面
+      router.push({ path: "/error", query: { message: "缺少必要的任务ID参数" } });
       return;
     }
 
@@ -631,8 +631,8 @@ const fetchSplitTables = async () => {
 
     // 检查响应数据是否有效
     if (!response) {
-      ElMessage.error("获取的数据格式无效");
-      isTaskValid.value = false;
+      // 获取的数据格式无效，跳转到error页面
+      router.push({ path: "/error", query: { message: "获取的数据格式无效" } });
       return;
     }
 
@@ -647,8 +647,8 @@ const fetchSplitTables = async () => {
           headers: currentTaskData.uploadedHeaders
         }];
       } else {
-        ElMessage.error("获取的数据格式无效");
-        isTaskValid.value = false;
+        // 获取的数据格式无效，跳转到error页面
+        router.push({ path: "/error", query: { message: "获取的数据格式无效" } });
         return;
       }
     }
@@ -778,7 +778,7 @@ const fetchSplitTables = async () => {
   } catch (error) {
     console.error("获取拆分表格数据失败:", error);
     // 直接跳转到error页面，不使用本地数据
-    router.push({ path: "/error", query: { message: "获取服务端数据失败，请稍后重试" } });
+    router.push({ path: "/error", query: { message: "任务不存在或已失效" } });
   } finally {
     loading.value = false;
   }
