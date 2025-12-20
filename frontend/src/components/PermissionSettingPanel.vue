@@ -51,7 +51,8 @@
         <div class="column-basic-permissions">
           <label>
             <strong>{{ col.label }} </strong>
-            <el-checkbox v-model="col.editable" :disabled="split && header && col.label === header" />
+            <el-checkbox v-model="col.editable" :disabled="split && header && col.label === header"
+              @change="handleEditableChange(col)" />
             可编辑
           </label>
           <label class="required-option">
@@ -137,7 +138,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useTaskStore } from "../stores/task";
-import { getDefaultPermissions } from "../hooks/tablePermission";
+import { getDefaultPermissions, getEmptyValidation } from "../hooks/tablePermission";
 
 // 定义 props
 const props = defineProps<{
@@ -176,17 +177,6 @@ const regexPresets = ref({
   url: { pattern: /^https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&\/=]*)$/, name: '网址' }
 });
 
-const getEmptyValidation = () => ({
-  type: "",
-  min: null,
-  max: null,
-  maxLength: null,
-  options: [],
-  isInteger: false,
-  regex: "",
-  regexName: "",
-  format: ""
-});
 // 初始化列数据
 const initColumns = () => {
   // 确保taskId存在
@@ -202,7 +192,7 @@ const initColumns = () => {
     localColumns.value = uploadedHeaders.value.map((h, index) => {
       // 检查是否是拆分字段列
       const isSplitColumn = split.value && header.value && h === header.value;
-      
+
       return {
         label: h,
         prop: h,
@@ -234,7 +224,9 @@ const initColumns = () => {
         column.validation = getEmptyValidation();
       } else {
         // 非拆分列默认可编辑
-        column.editable = true;
+        if (column.editable === undefined) {
+          column.editable = true;
+        }
       }
 
       if (column.validation && column.validation.type === 'options') {
@@ -273,6 +265,14 @@ const updateValidation = (column: any) => {
     regexName: "",
     format: "", // 重置日期格式为默认值（无限制）
   };
+};
+
+// 处理可编辑状态变化
+const handleEditableChange = (column: any) => {
+  // 当列变为不可编辑时，清空所有权限设置
+  if (!column.editable) {
+    column.validation = getEmptyValidation();
+  }
 };
 
 // 选择正则表达式预设

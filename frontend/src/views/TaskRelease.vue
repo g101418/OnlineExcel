@@ -1,5 +1,15 @@
 <template>
   <div class="task-release-root">
+    <!-- 悬浮提示框 -->
+    <div v-if="showNotification" class="floating-notification">
+      <div class="notification-content">
+        <el-icon class="notification-icon">
+          <SuccessFilled />
+        </el-icon>
+        <span>任务已成功发布，请将链接转发给填报者。</span>
+      </div>
+    </div>
+
     <TaskInfo title="发布任务" />
 
     <!-- 显示表格列表 -->
@@ -15,12 +25,20 @@
           </div>
         </div>
         <div class="header-buttons">
-          <el-button type="primary" @click="exportAllLinks">一键导出链接</el-button>
+          <el-tooltip content="导出所有发送给填报者的链接，可以复制到Excel表格中，然后批量清分。" placement="top">
+            <el-button type="primary" @click="exportAllLinks">一键导出链接</el-button>
+          </el-tooltip>
           <el-divider direction="vertical" />
-          <el-button :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
+          <el-tooltip content="点击导出所有已提交表格的数据" placement="top">
+            <el-button :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
+          </el-tooltip>
           <el-divider direction="vertical" />
-          <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
-          <el-button type="danger" @click="deleteTaskAndRedirect">删除任务</el-button>
+          <el-tooltip content="回到上一页面，同时撤回任务，填报者将无法打开原任务链接。" placement="top">
+            <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
+          </el-tooltip>
+          <el-tooltip content="永久删除任务，无法找回！" placement="top">
+            <el-button type="danger" @click="deleteTaskAndRedirect">删除任务</el-button>
+          </el-tooltip>
         </div>
       </div>
 
@@ -51,15 +69,17 @@
             <el-button v-if="scope.row.status === '已上传'" type="success" size="small" @click="downloadTable(scope.row)">
               下载
             </el-button>
+            <el-tooltip content="该填报者已逾期，无法填报，豁免后填报者可以继续填报。" placement="top">
             <el-button v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" type="warning"
               size="small" @click="exemptSubTask(scope.row)">
               逾期豁免
             </el-button>
-
-            <el-button v-if="scope.row.status === '已上传'" type="warning" size="small" @click="rejectTable(scope.row)">
-              退回
-            </el-button>
-
+            </el-tooltip>
+            <el-tooltip content="退回给填报者，由其重新修改。" placement="top">
+              <el-button v-if="scope.row.status === '已上传'" type="warning" size="small" @click="rejectTable(scope.row)">
+                退回
+              </el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -71,7 +91,8 @@
         <div class="dialog-header">
           <span>表格数据</span>
           <div class="dialog-header-actions">
-            <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '与原表格比较' }}</el-button>
+            <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '与原表格比较'
+            }}</el-button>
             <el-button size="small" @click="tableDataDialogVisible = false">关闭</el-button>
           </div>
         </div>
@@ -82,9 +103,8 @@
         </el-icon>
         <div>加载中...</div>
       </div>
-      <el-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0"
-        :data="tableData.table_data" style="width: 100%"
-        :cell-style="getCellStyle">
+      <el-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0" :data="tableData.table_data"
+        style="width: 100%" :cell-style="getCellStyle">
         <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
       </el-table>
       <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)"
@@ -102,9 +122,9 @@
 
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage, ElLoading, ElMessageBox } from "element-plus";
-import { Loading } from "@element-plus/icons-vue";
+import { Loading, SuccessFilled } from "@element-plus/icons-vue";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore, saveState } from "../stores/task";
 import * as XLSX from "xlsx";
@@ -147,6 +167,9 @@ const tableDataDialogVisible = ref(false);
 const tableData = ref(null);
 const tableDataLoading = ref(false);
 const tableHeaders = ref([]);
+// 悬浮提示框相关变量
+const showNotification = ref(true);
+let notificationTimer = null;
 // 表格差异比较相关变量
 const localTableData = ref(null);
 const showDifferences = ref(false);
@@ -168,7 +191,8 @@ const formatDate = (dateString) => {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    second: '2-digit'
   });
 };
 
@@ -302,7 +326,7 @@ const viewTable = async (table) => {
     };
     // 使用当前任务的uploadedHeaders作为表头
     tableHeaders.value = currentTask.value?.uploadedHeaders || [];
-    
+
     // 从本地存储获取对应的表格数据
     getLocalTableData(table);
   } catch (error) {
@@ -351,50 +375,50 @@ const compareTable = () => {
     comparisonResults.value = [];
     return;
   }
-  
+
   // 检查数据有效性
   if (!tableData.value || !tableData.value.table_data || !Array.isArray(tableData.value.table_data)) {
     ElMessage.warning("报送表格数据无效");
     return;
   }
-  
+
   if (!localTableData.value || !Array.isArray(localTableData.value) || localTableData.value.length === 0) {
     ElMessage.warning("原始表格数据无效");
     return;
   }
-  
+
   const submittedData = tableData.value.table_data; // 报送者修改后的数据
   const originalData = localTableData.value; // 原始表格数据
-  
+
   // 重置比较结果
   comparisonResults.value = [];
-  
+
   // 比较每一行和每一列的数据
   const minRows = Math.min(submittedData.length, originalData.length);
-  
+
   for (let rowIndex = 0; rowIndex < minRows; rowIndex++) {
     const submittedRow = submittedData[rowIndex] || {};
     const originalRow = originalData[rowIndex] || {};
-    
+
     const rowComparison = {
       rowIndex,
       differences: []
     };
-    
+
     // 获取最大列数进行比较，确保所有列都被检查
     const maxCols = Math.max(
       Object.keys(submittedRow).length,
       Object.keys(originalRow).length
     );
-    
+
     for (let colIndex = 0; colIndex < maxCols; colIndex++) {
       const submittedCell = submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '';
       const originalCell = originalRow[`col${colIndex}`] !== undefined ? originalRow[`col${colIndex}`] : '';
-      
+
       // 容错比较：去除首尾空格并转换为字符串
       const submittedCellStr = String(submittedCell).trim();
       const originalCellStr = String(originalCell).trim();
-      
+
       if (submittedCellStr !== originalCellStr) {
         rowComparison.differences.push({
           colIndex,
@@ -403,27 +427,27 @@ const compareTable = () => {
         });
       }
     }
-    
+
     // 如果该行有差异，添加到比较结果
     if (rowComparison.differences.length > 0) {
       comparisonResults.value.push(rowComparison);
     }
   }
-  
+
   // 显示差异
   showDifferences.value = true;
-  
+
   if (comparisonResults.value.length === 0) {
     ElMessage.success("两份表格数据完全一致");
   }
 };
 
 // 获取单元格样式
-const getCellStyle = ({row, column, rowIndex, columnIndex}) => {
+const getCellStyle = ({ row, column, rowIndex, columnIndex }) => {
   if (!showDifferences.value || comparisonResults.value.length === 0) {
     return {};
   }
-  
+
   // 检查当前单元格是否有差异
   const rowComparison = comparisonResults.value.find(item => item.rowIndex === rowIndex);
   if (rowComparison) {
@@ -432,7 +456,7 @@ const getCellStyle = ({row, column, rowIndex, columnIndex}) => {
       return { backgroundColor: '#ffcccc' };
     }
   }
-  
+
   return {};
 };
 
@@ -493,11 +517,15 @@ const downloadTable = async (table) => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, table.name);
 
-    // 生成文件名
-    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
-
-    // 导出Excel文件
-    XLSX.writeFile(workbook, exportFileName);
+    // 生成文件名 - 使用原始文件的扩展名
+    const fileExtension = fileName.value.split('.').pop() || 'xlsx';
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_${table.name}_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
+    
+    // 导出文件 - 处理不支持的格式
+    const bookType = ['et', 'xls'].includes(fileExtension.toLowerCase()) ? 'xlsx' : fileExtension.toLowerCase();
+    
+    // 导出文件
+    XLSX.writeFile(workbook, exportFileName, { bookType });
 
     // 关闭加载状态
     loading.close();
@@ -527,12 +555,13 @@ const deleteTaskAndRedirect = async () => {
   try {
     // 弹出确认对话框
     const confirmResult = await ElMessageBox.confirm(
-      '确定要删除该任务吗？删除后将无法恢复。',
+      '确定<strong style="color: #e74c3c;">永久删除</strong>该任务吗？请<strong style="color: #e74c3c;">确保数据已下载</strong>，删除后将<strong style="color: #e74c3c;">无法恢复</strong>。',
       '删除任务确认',
       {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning',
+        dangerouslyUseHTMLString: true
       }
     );
 
@@ -650,11 +679,15 @@ const exportAllTables = async () => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '汇总数据');
 
-    // 生成文件名
-    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
-
-    // 导出Excel文件
-    XLSX.writeFile(workbook, exportFileName);
+    // 生成文件名 - 使用原始文件的扩展名
+    const fileExtension = fileName.value.split('.').pop() || 'xlsx';
+    const exportFileName = `${fileName.value.replace(/\.[^/.]+$/, "")}_汇总数据_${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "_")}.${fileExtension}`;
+    
+    // 导出文件 - 处理不支持的格式
+    const bookType = ['et', 'xls'].includes(fileExtension.toLowerCase()) ? 'xlsx' : fileExtension.toLowerCase();
+    
+    // 导出文件
+    XLSX.writeFile(workbook, exportFileName, { bookType });
 
     // 关闭加载状态
     loading.close();
@@ -796,7 +829,7 @@ const fetchSplitTables = async () => {
     // 查询子任务的豁免情况
     const taskOverdueInfo = await checkTaskOverdue(route.query.taskId as string);
 
-    
+
     // 获取子任务豁免信息数组
     let overdueStatus = [];
     if (taskOverdueInfo && Array.isArray(taskOverdueInfo)) {
@@ -806,18 +839,18 @@ const fetchSplitTables = async () => {
       // 包含overdueStatus数组的新结构
       overdueStatus = taskOverdueInfo.overdueStatus;
     }
-    
+
     // 更新每个表格的豁免状态
     if (overdueStatus.length > 0) {
       splitTables.value.forEach(table => {
         const overdueInfo = overdueStatus.find(item => item.filling_task_id === table.code);
         if (overdueInfo) {
-          
-          
+
+
           // 正确转换overdue_permission为布尔值
           // 处理数值型（1/0）和布尔型
           table.overduePermission = Boolean(Number(overdueInfo.overdue_permission));
-          
+
         } else {
           // 默认设置为未豁免
           table.overduePermission = false;
@@ -846,6 +879,23 @@ onMounted(() => {
 
   // 初始化表格数据
   fetchSplitTables();
+
+  // 设置提示框10秒后自动消失
+  showNotification.value = true;
+  if (notificationTimer) {
+    clearTimeout(notificationTimer);
+  }
+  notificationTimer = setTimeout(() => {
+    showNotification.value = false;
+  }, 10000); // 10秒后隐藏
+});
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (notificationTimer) {
+    clearTimeout(notificationTimer);
+    notificationTimer = null;
+  }
 });
 </script>
 
@@ -893,6 +943,19 @@ onMounted(() => {
   align-items: center;
 }
 
+/* 响应式设计：页面窄时按钮纵向排列 */
+@media (max-width: 980px) {
+  .header-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* 纵向排列时隐藏垂直分割线 */
+  .header-buttons .el-divider {
+    display: none;
+  }
+}
+
 .copy-clickable {
   cursor: pointer;
   color: #409eff;
@@ -912,5 +975,48 @@ onMounted(() => {
 .dialog-header-actions {
   display: flex;
   gap: 10px;
+}
+
+/* 悬浮提示框样式 */
+.floating-notification {
+  position: fixed;
+  top: 100px;
+  right: 9%;
+  z-index: 1000;
+  background-color: #f0f9eb;
+  border: 1px solid #b7eb8f;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  max-width: 350px;
+  animation: slideInRight 0.3s ease-out;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #52c41a;
+  font-size: 14px;
+}
+
+.notification-icon {
+  color: #52c41a;
+  font-size: 18px;
+}
+
+/* 动画效果 */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>

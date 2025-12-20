@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+import rateLimit from 'express-rate-limit';
 
 // 限流配置 - 可根据需要调整
 const RATE_LIMIT_CONFIG = {
@@ -12,4 +12,4 @@ const RATE_LIMIT_CONFIG = {
 // 创建限流中间件
 const limiter = rateLimit(RATE_LIMIT_CONFIG);
 
-module.exports = limiter;
+export default limiter;

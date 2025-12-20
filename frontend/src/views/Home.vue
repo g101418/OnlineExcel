@@ -13,11 +13,11 @@
       </el-button>
       <el-dialog title="上传表格" v-model="showUploadDialog" append-to-body width="680px" @close="onDialogClose">
         <div class="dialog-content">
-          <el-upload class="upload-demo" :before-upload="beforeUpload" :auto-upload="false" accept=".xls,.xlsx,.csv"
+          <el-upload class="upload-demo" :before-upload="beforeUpload" :auto-upload="false" accept=".xls,.xlsx,.csv,.et"
             :on-change="handleChange" :file-list="fileList" :limit="1" drag>
             <i class="el-icon-upload"></i>
             <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-            <div class="el-upload__tip">仅支持后缀为 .xls/.xlsx/.csv 的表格文件</div>
+            <div class="el-upload__tip">仅支持后缀为 .xls/.xlsx/.csv/.et 的表格文件</div>
           </el-upload>
           <div v-if="uploading" style="margin-top: 12px">
             <el-progress :percentage="uploadProgress" />
@@ -257,9 +257,6 @@ const deleteHistoricalTask = async (taskId) => {
       // 从store中删除任务
       store.deleteTask(taskId);
 
-      // 更新历史表格列表
-      loadHistoricalData();
-
       ElMessage.success('任务已删除');
     }
   } catch (error) {
@@ -384,11 +381,11 @@ const onDialogClose = () => {
 };
 
 const beforeUpload = (file) => {
-  const validExt = ["xls", "xlsx", "csv"];
+  const validExt = ["xls", "xlsx", "csv", "et"];
   const name = file.name || "";
   const ext = name.split(".").pop().toLowerCase();
   if (!validExt.includes(ext)) {
-    ElMessage.error("只支持 .xls / .xlsx / .csv 格式的文件");
+    ElMessage.error("只支持 .xls / .xlsx / .csv / .et 格式的文件");
     return false;
   }
   // max 1MB

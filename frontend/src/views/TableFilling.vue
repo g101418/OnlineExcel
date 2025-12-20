@@ -11,7 +11,7 @@
                     </el-tooltip>
                 </p>
                 <p>
-                    <strong>截止日期：</strong>
+                    <strong>截止时间：</strong>
                     {{ formatDate(taskInfo.taskDeadline) }}
                 </p>
                 <p>
@@ -59,18 +59,22 @@
                 @click="handleSaveDraft" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
                 暂存
             </el-button>
-            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                @click="handleRestore" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
-                还原表格
-            </el-button>
-            <el-button v-if="taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
+            <el-tooltip content="将表格恢复到初始状态。" placement="top">
+                <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                    @click="handleRestore" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
+                    还原表格
+                </el-button>
+            </el-tooltip>
+            <el-button v-if="false && taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
                 撤回
             </el-button>
-            <el-button v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                type="primary" :disabled="!canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
-                @click="handleSubmit">
-                提交
-            </el-button>
+            <el-tooltip content="提交后不可修改。" placement="top">
+                <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                    type="primary" :disabled="!canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
+                    @click="handleSubmit">
+                    提交
+                </el-button>
+            </el-tooltip>
         </div>
     </div>
 </template>
@@ -133,16 +137,25 @@ const copyTaskId = async (textToCopy: string) => {
 }
 const formatDate = (d: string) => {
     if (!d) return ''
-    return new Date(d).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    return new Date(d).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    })
 }
 const getFillingStatusType = () => {
     if (taskInfo.fillingStatus === 'submitted') return 'success'
-    if (taskInfo.fillingStatus === 'returned') return 'danger'
-    return 'warning'
+    if (taskInfo.fillingStatus === 'returned') return 'warning'
+    if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return 'danger'
+    return 'primary'
 }
 const getFillingStatusText = () => {
     if (taskInfo.fillingStatus === 'submitted') return '已提交'
     if (taskInfo.fillingStatus === 'returned') return '已退回'
+    if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return '已逾期'
     return '填报中'
 }
 const formatDateSimple = (val: string | number | Date) => {
@@ -157,7 +170,7 @@ const permissionTooltipContent = computed(() => {
         'idcard': '身份证号',
         'email': '邮箱',
         'url': '网址',
-        'custom': '自定义格式'
+        'custom': '特定格式'
     }
     let content = '<div style="max-width: 450px; line-height: 1.6;">'
     content += '<h4 style="margin-top: 0; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px;">列填报规则：</h4>'
@@ -227,6 +240,7 @@ const permissionTooltipContent = computed(() => {
     content += '</ul></div>'
     return content
 })
+
 function getValidationError(value: any, perm: any): string | null {
     if (!perm) return null
     let v = value == null ? '' : String(value).trim()
@@ -243,12 +257,40 @@ function getValidationError(value: any, perm: any): string | null {
         if (max != null && num > max) return `不能大于 ${max}`
     }
     else if (type === 'date') {
+
         if (format === 'yyyy年mm月dd日') {
             const match = v.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-            if (match) v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
         }
-        const d = new Date(v)
+        else if (format === 'yyyy-mm-dd') {
+            const match = v.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
+        }
+        else if (format === 'yyyy/mm/dd') {
+            const match = v.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
+        }
+        else if (format === 'yyyy.mm.dd') {
+            const match = v.match(/(\d{4})\.(\d{1,2})\.(\d{1,2})/);
+            if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
+            else return '日期格式不正确'
+        }
+
+        const [inputYear, inputMonth, inputDay] = v.split('-').map(Number);
+        const d = new Date(inputYear, inputMonth - 1, inputDay);
         if (isNaN(d.getTime())) return '日期格式不正确'
+
+        const parsedYear = d.getFullYear(); // 本地时区的年
+        const parsedMonth = d.getMonth() + 1; // 本地时区的月（还原为1-12）
+        const parsedDay = d.getDate(); // 本地时区的日
+
+        // 6. 所有条件匹配则返回Date对象，否则返回NaN
+        if (!(parsedYear === inputYear && parsedMonth === inputMonth && parsedDay === inputDay))
+            return '日期输入有误'
+
         if (min && d < new Date(min)) return `不能早于 ${new Date(min).toLocaleDateString()}`
         if (max && d > new Date(max)) return `不能晚于 ${new Date(max).toLocaleDateString()}`
     }
@@ -358,7 +400,7 @@ const hotSettings = computed(() => ({
         const sourceData = hot.getDataAtRow(sourceRowIndex);
         const changes: any[] = [];
         permissions.columns.forEach((perm, colIndex) => {
-            if (perm && !perm.editable) {
+            if (perm && !perm.editable && perm.required) {
                 const valueToCopy = sourceData[colIndex];
                 for (let i = 0; i < amount; i++) {
                     changes.push([index + i, colIndex, valueToCopy]);

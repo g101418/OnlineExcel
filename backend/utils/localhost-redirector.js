@@ -1,4 +1,4 @@
-const os = require('os');
+import os from 'os';
 
 // 获取服务器的实际IP地址
 function getServerIp() {
@@ -28,4 +28,4 @@ const redirectLocalhost = (req, res, next) => {
 }
 
 
-module.exports = redirectLocalhost;
+export default redirectLocalhost;

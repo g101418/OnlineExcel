@@ -1,4 +1,4 @@
-const sqlite3 = require('sqlite3').verbose();
+import sqlite3 from 'sqlite3';
 
 // 创建数据库连接
 const db = new sqlite3.Database('./tasks.db', (err) => {
@@ -60,4 +60,4 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
   }
 });
 
-module.exports = db;
+export default db;
