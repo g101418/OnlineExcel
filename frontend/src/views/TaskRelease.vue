@@ -16,8 +16,11 @@
         </div>
         <div class="header-buttons">
           <el-button type="primary" @click="exportAllLinks">一键导出链接</el-button>
+          <el-divider direction="vertical" />
           <el-button :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
+          <el-divider direction="vertical" />
           <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
+          <el-button type="danger" @click="deleteTaskAndRedirect">删除任务</el-button>
         </div>
       </div>
 
@@ -100,7 +103,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
 import { ref, computed, onMounted } from "vue";
-import { ElMessage, ElLoading } from "element-plus";
+import { ElMessage, ElLoading, ElMessageBox } from "element-plus";
 import { Loading } from "@element-plus/icons-vue";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore, saveState } from "../stores/task";
@@ -519,6 +522,55 @@ const exemptSubTask = async (table) => {
   }
 };
 
+// 删除任务并跳转回主页
+const deleteTaskAndRedirect = async () => {
+  try {
+    // 弹出确认对话框
+    const confirmResult = await ElMessageBox.confirm(
+      '确定要删除该任务吗？删除后将无法恢复。',
+      '删除任务确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    if (confirmResult === 'confirm') {
+      // 调用API删除任务及相关子任务
+      await deleteTask(taskId.value);
+
+      // 从本地存储中移除该任务
+      store.deleteTask(taskId.value);
+
+      // 跳转回主页
+      router.push("/");
+
+      ElMessage.success("任务已成功删除");
+    }
+  } catch (error) {
+    // 如果是用户取消操作，不显示错误信息
+    if (error === 'cancel') {
+      return;
+    }
+
+    console.error("删除任务失败:", error);
+
+    // 检查错误信息，如果任务已删除或不存在，仍允许跳转
+    if (error.response?.status === 404 || error.message.includes('不存在') || error.message.includes('not found')) {
+      // 从本地存储中移除该任务
+      store.deleteTask(taskId.value);
+
+      // 跳转回主页
+      router.push("/");
+
+      ElMessage.success("任务已成功删除");
+    } else {
+      ElMessage.error("删除任务失败，请稍后重试");
+    }
+  }
+};
+
 // 汇总导出所有已提交的表格数据
 const exportAllTables = async () => {
   try {
@@ -838,6 +890,7 @@ onMounted(() => {
 .header-buttons {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 
 .copy-clickable {
