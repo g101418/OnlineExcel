@@ -1,11 +1,12 @@
 import sqlite3 from 'sqlite3';
+import logger from './utils/logger.js';
 
 // 创建数据库连接
 const db = new sqlite3.Database('./tasks.db', (err) => {
   if (err) {
-    console.error(err.message);
+    logger.error('Database connection error:', err.message);
   } else {
-    console.log('Connected to the tasks database.');
+    logger.info('Connected to the tasks database.');
     
     // 创建任务表
     db.run(`CREATE TABLE IF NOT EXISTS tasks (
@@ -32,9 +33,9 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, (err) => {
       if (err) {
-        console.error(err.message);
+        logger.error('Error creating tasks table:', err.message);
       } else {
-        console.log('Created tasks table.');
+        logger.info('Created tasks table.');
       }
     });
     
@@ -52,9 +53,9 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       FOREIGN KEY (original_task_id) REFERENCES tasks (taskId)
     )`, (err) => {
       if (err) {
-        console.error(err.message);
+        logger.error('Error creating table_fillings table:', err.message);
       } else {
-        console.log('Created table_fillings table.');
+        logger.info('Created table_fillings table.');
       }
     });
   }
