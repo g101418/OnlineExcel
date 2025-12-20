@@ -332,6 +332,9 @@ const hotSettings = computed(() => ({
             },
             'hsep1': '---------',
             'remove_row': { name: '删除行', hidden: () => !permissions.row.deletable },
+            'hsep2': '---------',
+            'undo': { name: '撤销' },
+            'redo': { name: '重做' }
         }
     },
     afterInit: function () {
@@ -415,6 +418,9 @@ watch(() => permissions.row, (newRowPermissions) => {
                     'row_below': { name: '在下方插入行', hidden: () => !newRowPermissions.addable },
                     'hsep1': '---------',
                     'remove_row': { name: '删除行', hidden: () => !newRowPermissions.deletable },
+                    'hsep2': '---------',
+                    'undo': { name: '撤销' },
+                    'redo': { name: '重做' }
                 }
             },
             manualRowMove: newRowPermissions.sortable
