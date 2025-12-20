@@ -1,5 +1,13 @@
 <template>
   <div class="task-release-root">
+    <!-- 悬浮提示框 -->
+    <div class="floating-notification">
+      <div class="notification-content">
+        <el-icon class="notification-icon"><SuccessFilled /></el-icon>
+        <span>任务已成功发布，请将链接转发给填报者。</span>
+      </div>
+    </div>
+    
     <TaskInfo title="发布任务" />
 
     <!-- 显示表格列表 -->
@@ -104,7 +112,7 @@
 import { useRouter, useRoute } from "vue-router";
 import { ref, computed, onMounted } from "vue";
 import { ElMessage, ElLoading, ElMessageBox } from "element-plus";
-import { Loading } from "@element-plus/icons-vue";
+import { Loading, SuccessFilled } from "@element-plus/icons-vue";
 import TaskInfo from "../components/TaskInfo.vue";
 import { useTaskStore, saveState } from "../stores/task";
 import * as XLSX from "xlsx";
@@ -528,12 +536,13 @@ const deleteTaskAndRedirect = async () => {
   try {
     // 弹出确认对话框
     const confirmResult = await ElMessageBox.confirm(
-      '确定要删除该任务吗？删除后将无法恢复。',
+      '确定<strong style="color: #e74c3c;">永久删除</strong>该任务吗？请<strong style="color: #e74c3c;">确保数据已下载</strong>，删除后将<strong style="color: #e74c3c;">无法恢复</strong>。',
       '删除任务确认',
       {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning',
+        dangerouslyUseHTMLString: true
       }
     );
 
@@ -926,5 +935,47 @@ onMounted(() => {
 .dialog-header-actions {
   display: flex;
   gap: 10px;
+}
+
+/* 悬浮提示框样式 */
+.floating-notification {
+  position: fixed;
+  top: 100px;
+  right: 9%;
+  z-index: 9999;
+  background-color: #f0f9eb;
+  border: 1px solid #b7eb8f;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  max-width: 350px;
+  animation: slideInRight 0.3s ease-out;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #52c41a;
+  font-size: 14px;
+}
+
+.notification-icon {
+  color: #52c41a;
+  font-size: 18px;
+}
+
+/* 动画效果 */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>
