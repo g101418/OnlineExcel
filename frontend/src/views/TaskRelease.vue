@@ -33,7 +33,7 @@
             <el-button type="success" :disabled="!hasSubmittedTables" @click="exportAllTables">汇总导出数据</el-button>
           </el-tooltip>
           <el-divider direction="vertical" />
-          <el-tooltip content="回到上一页面，同时撤回任务，填报者将无法打开原任务链接。" placement="top">
+          <el-tooltip content="回到上一页面，同时撤回任务，已填报数据将丢失，填报者将无法打开原任务链接。" placement="top">
             <el-button type="danger" @click="goToTaskCondition">撤回任务并返回条件设置</el-button>
           </el-tooltip>
           <el-tooltip content="永久删除任务，无法找回！" placement="top">
@@ -350,7 +350,7 @@ const goToTaskCondition = async () => {
 
       ElMessage.success("任务已删除并返回条件设置页面");
     } else {
-      ElMessage.error("返回条件设置页面失败，请稍后重试");
+      ElMessage.error("撤回任务失败，请稍后重试");
     }
   }
 };
