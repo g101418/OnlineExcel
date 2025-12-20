@@ -663,7 +663,7 @@ const generateTaskId = (file: File) => {
   text-align: center;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .get-task-link-form {
     flex-direction: column;
     align-items: stretch;
