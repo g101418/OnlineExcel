@@ -5,14 +5,14 @@
       <!-- 只有当任务有效时，才显示内容 -->
       <div v-if="isTaskValid" class="main-area">
         <div class="controls">
-          <span style="margin-left: 8px">拆分方式：</span>
+          <span style="margin-left: 8px"><strong>拆分方式</strong>（拆分表格给不同填报者填报）：</span>
           <el-switch v-model="splitEnabled" active-text="拆分" inactive-text="不拆分"></el-switch>
 
-          <el-select v-if="splitEnabled" v-model="selectedHeader" placeholder="选择表头" style="width: 240px; margin-left: 12px">
+          <el-select v-if="splitEnabled" v-model="selectedHeader" placeholder="选择用于拆分的表头" style="width: 240px; margin-left: 12px">
             <el-option v-for="(h, idx) in headers" :key="idx" :label="h" :value="h" />
           </el-select>
           <el-button type="primary" :disabled="splitEnabled && !selectedHeader" @click="handleSetConditions">
-            {{ splitEnabled ? '拆分并设定条件' : '设定条件' }}
+            {{ splitEnabled ? '拆分并完善填报任务' : '完善填报任务' }}
           </el-button>
         </div>
 
