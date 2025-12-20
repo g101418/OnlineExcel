@@ -9,14 +9,14 @@
       <p class="desc">将大型表格拆分为多个可管理的任务，支持批量生成与下载。</p>
 
       <el-button class="start-btn" size="large" type="primary" @click="openUploadDialog">
-        上传表格开始任务
+        加载表格开始任务
       </el-button>
       <el-dialog title="上传表格" v-model="showUploadDialog" append-to-body width="680px" @close="onDialogClose">
         <div class="dialog-content">
           <el-upload class="upload-demo" :before-upload="beforeUpload" :auto-upload="false" accept=".xls,.xlsx,.csv,.et"
             :on-change="handleChange" :file-list="fileList" :limit="1" drag>
             <i class="el-icon-upload"></i>
-            <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+            <div class="el-upload__text">将文件拖到此处，或<em>点击加载</em></div>
             <div class="el-upload__tip">仅支持后缀为 .xls/.xlsx/.csv/.et 的表格文件</div>
           </el-upload>
           <div v-if="uploading" style="margin-top: 12px">
@@ -177,7 +177,7 @@ const calculateDataSize = (headers, data) => {
 const getStatusText = (progress) => {
   const statusMap = {
     generation: '正在拆分表格',
-    condition: '正在设置条件',
+    condition: '正在完善任务',
     release: '已经发布任务',
     completed: '已经完成'
   };

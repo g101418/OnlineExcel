@@ -637,7 +637,7 @@ const checkIdExists = (id, callback) => {
       }
 
       // 不存在，返回错误
-      callback(new Error("ID not found"));
+      callback(new Error("未找到任务ID，可能已经删除或未上传"));
     });
   } else if (id.length === 28) {
     // 30位ID，查询子任务表
@@ -653,11 +653,11 @@ const checkIdExists = (id, callback) => {
       }
 
       // 不存在，返回错误
-      callback(new Error("ID not found"));
+      callback(new Error("未找到任务ID，可能已经删除或未上传"));
     });
   } else {
     // 长度不符合要求，直接返回错误
-    callback(new Error("Invalid ID length"));
+    callback(new Error("ID长度错误"));
   }
 };
 
