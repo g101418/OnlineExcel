@@ -257,9 +257,6 @@ const deleteHistoricalTask = async (taskId) => {
       // 从store中删除任务
       store.deleteTask(taskId);
 
-      // 更新历史表格列表
-      loadHistoricalData();
-
       ElMessage.success('任务已删除');
     }
   } catch (error) {
