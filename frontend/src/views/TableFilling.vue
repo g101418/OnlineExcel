@@ -59,18 +59,22 @@
                 @click="handleSaveDraft" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
                 暂存
             </el-button>
-            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                @click="handleRestore" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
-                还原表格
-            </el-button>
-            <el-button v-if="taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
+            <el-tooltip content="将表格恢复到初始状态。" placement="top">
+                <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                    @click="handleRestore" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
+                    还原表格
+                </el-button>
+            </el-tooltip>
+            <el-button v-if="false && taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
                 撤回
             </el-button>
-            <el-button v-else-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                type="primary" :disabled="!canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
-                @click="handleSubmit">
-                提交
-            </el-button>
+            <el-tooltip content="提交后不可修改。" placement="top">
+                <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
+                    type="primary" :disabled="!canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
+                    @click="handleSubmit">
+                    提交
+                </el-button>
+            </el-tooltip>
         </div>
     </div>
 </template>
@@ -144,12 +148,14 @@ const formatDate = (d: string) => {
 }
 const getFillingStatusType = () => {
     if (taskInfo.fillingStatus === 'submitted') return 'success'
-    if (taskInfo.fillingStatus === 'returned') return 'danger'
-    return 'warning'
+    if (taskInfo.fillingStatus === 'returned') return 'warning'
+    if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return 'danger'
+    return 'primary'
 }
 const getFillingStatusText = () => {
     if (taskInfo.fillingStatus === 'submitted') return '已提交'
     if (taskInfo.fillingStatus === 'returned') return '已退回'
+    if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return '已逾期'
     return '填报中'
 }
 const formatDateSimple = (val: string | number | Date) => {
