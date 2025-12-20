@@ -68,7 +68,7 @@
         <div class="dialog-header">
           <span>表格数据</span>
           <div class="dialog-header-actions">
-            <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '比较' }}</el-button>
+            <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '与原表格比较' }}</el-button>
             <el-button size="small" @click="tableDataDialogVisible = false">关闭</el-button>
           </div>
         </div>
