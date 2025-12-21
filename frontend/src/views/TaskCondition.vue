@@ -102,11 +102,34 @@ const store = useTaskStore();
 
 // 从路由query获取taskId
 const taskId = computed(() => route.query.taskId as string);
-// 从store获取当前任务数据（与PermissionSettingPanel保持一致的获取方式）
-const currentTask = computed(() => {
-  if (!taskId.value) return null;
-  return store.tasks.find(task => task.taskId === taskId.value);
-});
+// 从store获取当前任务数据（改为ref以便响应式更新）
+const currentTask = ref(null);
+
+// 监听store.tasks的变化，确保currentTask能够响应progress的更新
+watch(
+  () => store.tasks,
+  () => {
+    if (!taskId.value) {
+      currentTask.value = null;
+      return;
+    }
+    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
+  },
+  { deep: true, immediate: true }
+);
+
+// 监听taskId的变化，确保切换任务时能正确获取当前任务
+watch(
+  () => taskId.value,
+  () => {
+    if (!taskId.value) {
+      currentTask.value = null;
+      return;
+    }
+    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
+  },
+  { immediate: true }
+);
 const fileName = computed(() => currentTask.value?.fileName || '');
 const split = computed(() => currentTask.value?.split || false);
 const header = computed(() => currentTask.value?.header || '');
@@ -284,6 +307,17 @@ const viewTable = (table) => {
 
 const goToTaskGeneration = async () => {
   try {
+    console.log(currentTask.value?.progress)
+    // 检查当前任务状态是否为condition
+    if (currentTask.value?.progress !== 'condition') {
+      // 不强行修改条件，直接跳转到对应页面，由目标页面的逻辑处理
+      router.push({
+        path: "/task-generation",
+        query: { taskId: taskId.value }
+      });
+      return;
+    }
+
     // 如果当前是从release环节返回，获取最新任务数据并更新Pinia store
     if (currentTask.value?.progress === 'release') {
       const taskData = await getTaskData(taskId.value);
@@ -294,7 +328,7 @@ const goToTaskGeneration = async () => {
       if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
     }
 
-    // 重置进度为任务生成页面
+    // 重置进度为任务生成页面（只有在当前状态是condition时才执行）
     store.setProgress(taskId.value, 'generation');
 
     router.push({

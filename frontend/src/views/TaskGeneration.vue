@@ -41,11 +41,34 @@ const store = useTaskStore();
 // 从路由query获取taskId
 const taskId = computed(() => route.query.taskId as string);
 
-// 从store获取当前任务
-const currentTask = computed(() => {
-  if (!taskId.value) return null;
-  return store.tasks.find(task => task.taskId === taskId.value);
-});
+// 从store获取当前任务（改为ref以便响应式更新）
+const currentTask = ref(null);
+
+// 监听store.tasks的变化，确保currentTask能够响应progress的更新
+watch(
+  () => store.tasks,
+  () => {
+    if (!taskId.value) {
+      currentTask.value = null;
+      return;
+    }
+    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
+  },
+  { deep: true, immediate: true }
+);
+
+// 监听taskId的变化，确保切换任务时能正确获取当前任务
+watch(
+  () => taskId.value,
+  () => {
+    if (!taskId.value) {
+      currentTask.value = null;
+      return;
+    }
+    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
+  },
+  { immediate: true }
+);
 
 // 从当前任务获取数据
 const fileName = computed(() => currentTask.value?.fileName || '');
@@ -63,6 +86,7 @@ const handleTaskValidityChange = (valid: boolean) => {
 };
 
 onMounted(async () => {
+  
   if (currentTask.value) {
     // 设置当前进度为任务生成页面
     store.setProgress(taskId.value, 'generation');
@@ -112,6 +136,16 @@ const goHome = () => {
 const handleSetConditions = () => {
   if (!currentTask.value) return;
   
+  // 检查当前任务状态是否为generation
+  if (currentTask.value.progress !== 'generation') {
+    // 不强行修改状态，直接跳转到对应页面，由目标页面的逻辑处理
+    router.push({
+      path: "/task-condition",
+      query: { taskId: taskId.value },
+    });
+    return;
+  }
+  
   // 当启用拆分时，检查选择的列是否有空白单元格
   if (splitEnabled.value && selectedHeader.value) {
     // 找到选择的列在headers中的索引
@@ -146,7 +180,7 @@ const handleSetConditions = () => {
     }
   }
 
-  // 设置进度为条件设置页面
+  // 设置进度为条件设置页面（只有在当前状态是generation时才执行）
   store.setProgress(taskId.value, 'condition');
   router.push({
     path: "/task-condition",
