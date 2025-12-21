@@ -159,12 +159,26 @@ const getFillingStatusText = () => {
     if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return '已逾期'
     return '填报中'
 }
-const formatDateSimple = (val: string | number | Date) => {
-    if (!val) return ''
-    const d = new Date(val)
-    if (isNaN(d.getTime())) return val
-    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-}
+const formatDateSimple = (val: string | number | Date, format: string = 'yyyy-mm-dd'): string => {
+    // 空值直接返回空字符串
+    if (!val) return '';
+
+    // 处理日期对象，兼容各种输入类型
+    const d = new Date(val);
+    // 校验日期有效性（无效日期返回原始值）
+    if (isNaN(d.getTime())) return String(val);
+
+    // 获取补零后的年、月、日
+    const year = d.getFullYear().toString();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0'); // 月份从0开始，需+1
+    const day = d.getDate().toString().padStart(2, '0');
+
+    // 替换format中的占位符
+    return format
+        .replace('yyyy', year)
+        .replace('mm', month)
+        .replace('dd', day);
+};
 const permissionTooltipContent = computed(() => {
     const REGEX_LABEL_MAP: Record<string, string> = {
         'phone': '手机号',
@@ -210,8 +224,8 @@ const permissionTooltipContent = computed(() => {
             else if (v.type === 'date') {
                 let dateDesc = '日期'
                 if (v.format) dateDesc += ` (格式: ${v.format})`
-                const minStr = formatDateSimple(v.min)
-                const maxStr = formatDateSimple(v.max)
+                const minStr = formatDateSimple(v.min, v.format)
+                const maxStr = formatDateSimple(v.max, v.format)
                 if (minStr && maxStr) {
                     dateDesc += `，范围: ${minStr} 至 ${maxStr}`
                 } else if (minStr) {
