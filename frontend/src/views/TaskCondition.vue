@@ -505,6 +505,15 @@ onMounted(() => {
   fetchSplitTables();
 });
 
+// 监听拆分状态变化，确保splitTables能正确更新
+watch(
+  [() => currentTask.value?.splitEnabled, () => currentTask.value?.splitData],
+  () => {
+    fetchSplitTables();
+  },
+  { deep: true }
+);
+
 // 监听路由参数变化，手动修改URL时更新页面
 watch(
   () => route.query,
