@@ -505,14 +505,9 @@ onMounted(() => {
   fetchSplitTables();
 });
 
-// 监听拆分状态变化，确保splitTables能正确更新
-watch(
-  [() => currentTask.value?.splitEnabled, () => currentTask.value?.splitData],
-  () => {
-    fetchSplitTables();
-  },
-  { deep: true }
-);
+// 注：原本添加了对拆分状态变化的监听，但考虑到用户在condition页面不会修改拆分状态，
+// 且每次进入condition页面都会重新调用fetchSplitTables()，所以这个监听可能是多余的
+// 已保留注释作为参考
 
 // 监听路由参数变化，手动修改URL时更新页面
 watch(
