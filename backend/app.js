@@ -35,8 +35,8 @@ app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
 // 添加安全响应头中间件
 app.use(securityHeaders);
 
-// 应用限流中间件
-app.use(rateLimiter);
+// 应用限流中间件 - 传入参数设置每小时最多请求次数
+app.use(rateLimiter(700));
 
 // 静态文件服务 - 提供前端打包后的文件
 app.use(express.static(path.join(__dirname, './dist')));
