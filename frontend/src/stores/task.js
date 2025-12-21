@@ -182,6 +182,14 @@ createTask(taskId, fileName) {
       if (task) {
         task.splitEnabled = splitEnabled
         task.selectedHeader = selectedHeader
+        
+        // 当关闭拆分时，清除所有与拆分类的相关字段
+        if (!splitEnabled) {
+          task.split = false
+          task.header = ''
+          task.splitData = []
+        }
+        
         // 保存状态到本地存储
         saveState(this.$state)
       }
