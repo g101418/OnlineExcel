@@ -351,7 +351,7 @@ const hotSettings = computed(() => ({
                             } else if (count <= 0) {
                                 ElMessage.warning('请输入正整数');
                             } else {
-                                ElMessage.warning('最多只能插入300行');
+                                ElMessage.warning('一次最多只能插入300行');
                             }
                         }
                         ElMessageBox.close();
