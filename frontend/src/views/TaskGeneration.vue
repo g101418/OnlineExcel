@@ -12,7 +12,7 @@
             <el-option v-for="(h, idx) in headers" :key="idx" :label="h" :value="h" />
           </el-select>
           <el-button type="primary" :disabled="splitEnabled && !selectedHeader" @click="handleSetConditions">
-            {{ splitEnabled ? '拆分并完善填报任务' : '完善填报任务' }}
+            {{ splitEnabled ? '下一步' : '下一步' }}
           </el-button>
         </div>
 
