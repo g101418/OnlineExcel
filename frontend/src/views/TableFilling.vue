@@ -86,7 +86,8 @@ import { InfoFilled } from '@element-plus/icons-vue'
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
-import 'handsontable/dist/handsontable.full.css'
+import 'handsontable/styles/handsontable.min.css';
+import 'handsontable/styles/ht-theme-classic.min.css';
 import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable, checkSubTaskOverdue } from '../api/task'
 registerAllModules()
 registerLanguageDictionary(zhCN)
@@ -158,12 +159,26 @@ const getFillingStatusText = () => {
     if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return '已逾期'
     return '填报中'
 }
-const formatDateSimple = (val: string | number | Date) => {
-    if (!val) return ''
-    const d = new Date(val)
-    if (isNaN(d.getTime())) return val
-    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-}
+const formatDateSimple = (val: string | number | Date, format: string = 'yyyy-mm-dd'): string => {
+    // 空值直接返回空字符串
+    if (!val) return '';
+
+    // 处理日期对象，兼容各种输入类型
+    const d = new Date(val);
+    // 校验日期有效性（无效日期返回原始值）
+    if (isNaN(d.getTime())) return String(val);
+
+    // 获取补零后的年、月、日
+    const year = d.getFullYear().toString();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0'); // 月份从0开始，需+1
+    const day = d.getDate().toString().padStart(2, '0');
+
+    // 替换format中的占位符
+    return format
+        .replace('yyyy', year)
+        .replace('mm', month)
+        .replace('dd', day);
+};
 const permissionTooltipContent = computed(() => {
     const REGEX_LABEL_MAP: Record<string, string> = {
         'phone': '手机号',
@@ -209,8 +224,8 @@ const permissionTooltipContent = computed(() => {
             else if (v.type === 'date') {
                 let dateDesc = '日期'
                 if (v.format) dateDesc += ` (格式: ${v.format})`
-                const minStr = formatDateSimple(v.min)
-                const maxStr = formatDateSimple(v.max)
+                const minStr = formatDateSimple(v.min, v.format)
+                const maxStr = formatDateSimple(v.max, v.format)
                 if (minStr && maxStr) {
                     dateDesc += `，范围: ${minStr} 至 ${maxStr}`
                 } else if (minStr) {
@@ -307,12 +322,13 @@ const hotSettings = computed(() => ({
     stretchH: 'all',
     rowHeaders: true,
     colHeaders: originalHeaders.value,
-    minRows: 1,
+    minRows: 0,
     maxRows: permissions.row.addable ? undefined : Math.max(tableData.value.length, 1),
     rowHeights: 36,
     autoWrapRow: true,
     autoWrapCol: true,
     className: 'htCenter',
+    themeName: 'ht-theme-classic',
     columns: originalHeaders.value.length > 0 ? originalHeaders.value.map((_, colIndex) => {
         const perm = permissions.columns[colIndex]
         return {
@@ -340,16 +356,24 @@ const hotSettings = computed(() => ({
                     const hot = this;
                     const startRow = selection[0].start.row;
                     const executeInsert = (countStr: string) => {
-                        const count = parseInt(countStr);
-                        if (count > 0) {
-                            hot.alter('insert_row_below', startRow, count);
+                        if (!Number.isInteger(parseFloat(countStr))) {
+                            ElMessage.warning('请输入整数');
+                        } else {
+                            const count = parseInt(countStr);
+                            if (count > 0 && count <= 300) {
+                                hot.alter('insert_row_below', startRow, count);
+                            } else if (count <= 0) {
+                                ElMessage.warning('请输入正整数');
+                            } else {
+                                ElMessage.warning('一次最多只能插入300行');
+                            }
                         }
                         ElMessageBox.close();
                     };
                     ElMessageBox({
                         title: '批量增加行',
                         message: () => h('div', null, [
-                            h('p', { style: 'margin-bottom: 10px' }, '请输入要增加的行数：'),
+                            h('p', { style: 'margin-bottom: 10px' }, '请输入要增加的行数（最多300行）：'),
                             h('div', { class: 'quick-add-btns', style: 'display: flex; gap: 8px; margin-top: 10px' },
                                 [5, 10, 20, 50].map(num => h('button', {
                                     class: 'el-button el-button--small el-button--primary is-plain',
@@ -362,8 +386,8 @@ const hotSettings = computed(() => ({
                         ]),
                         showInput: true,
                         inputValue: '1',
-                        inputPattern: /^[1-9]\d*$/,
-                        inputErrorMessage: '请输入大于0的正整数',
+                        inputPattern: /^[1-9]\d{0,1}$|^[12]\d{2}$|^300$/,
+                        inputErrorMessage: '请输入1-300之间的正整数',
                         showCancelButton: true,
                         confirmButtonText: '确定',
                         cancelButtonText: '取消',

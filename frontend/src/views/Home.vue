@@ -71,18 +71,8 @@
       <div class="get-task-link">
         <h3 class="get-task-link-title">根据任务ID跳转任务页面</h3>
         <div class="get-task-link-form">
-          <el-input 
-            v-model="taskIdInput" 
-            placeholder="请输入任务ID" 
-            class="task-id-input"
-            :error="inputError"
-          />
-          <el-button 
-            type="primary" 
-            size="small" 
-            @click="getTaskByLink"
-            class="jump-btn"
-          >
+          <el-input v-model="taskIdInput" placeholder="请输入清分任务或填报任务ID" class="task-id-input" :error="inputError" />
+          <el-button type="primary" size="small" @click="getTaskByLink" class="jump-btn">
             跳转任务页面
           </el-button>
         </div>
@@ -126,24 +116,24 @@ const inputError = ref('');
 const getTaskByLink = async () => {
   // 清除之前的错误信息
   inputError.value = '';
-  
+
   if (!taskIdInput.value.trim()) {
     inputError.value = '请输入任务ID';
     return;
   }
-  
+
   const taskId = taskIdInput.value.trim();
-  
+
   // 检查ID长度
   if (taskId.length !== 24 && taskId.length !== 28) {
     inputError.value = 'ID长度必须为24位或28位';
     return;
   }
-  
+
   try {
     // 调用API检查ID是否存在
     const result = await checkIdExists(taskId);
-    
+
     // 根据API返回结果跳转
     if (result === 'task') {
       // 主任务跳转release页面
@@ -209,7 +199,7 @@ const navigateToTask = (table) => {
   // 从store中获取最新的任务状态
   const latestTask = store.getTask(table.taskId);
   const actualProgress = latestTask ? latestTask.progress : table.progress;
-  
+
   // 根据最新的progress状态决定跳转目标
   let targetPath;
   if (actualProgress === 'condition') {
@@ -288,10 +278,10 @@ const clearHistory = async () => {
 
     // 获取所有历史任务
     const allTasks = [...store.tasks];
-    
+
     // 记录删除失败的任务数
     let failedCount = 0;
-    
+
     // 逐个删除任务
     for (const task of allTasks) {
       const success = await deleteSingleTask(task.taskId);
@@ -418,16 +408,49 @@ const parseFileToStore = async (file: File) => {
     const workbook = XLSX.read(data, { type: "array" });
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
-    // Use sheet_to_json with header: 1 to get arrays (first row is headers)
-    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    // 使用 header: 1 获取原始数组
+    const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    // 1. 校验：表格是否完全为空
     if (!rows || rows.length === 0) {
       return { headers: [], dataRows: [] };
     }
-    const headers = rows[0].map((h) => (h === null || h === undefined ? "" : String(h)));
+
+    // 2. 计算整个表格的最大列数
+    // 如果只看第一行 rows[0].length，可能会漏掉表头后面几列虽然没写字，但数据行有数据的情况
+    let maxCols = 0;
+    rows.forEach(row => {
+      if (Array.isArray(row) && row.length > maxCols) {
+        maxCols = row.length;
+      }
+    });
+
+    // 如果最大列数为0，说明全是空行
+    if (maxCols === 0) {
+      return { headers: [], dataRows: [] };
+    }
+
+    // 3. 处理表头
+    // 获取第一行作为表头原始数据
+    const rawHeaders = rows[0] || [];
+    const headers = [];
+
+    // 按照最大列数填充表头，确保 header 数组长度足够
+    for (let i = 0; i < maxCols; i++) {
+      const cell = rawHeaders[i];
+      // 转为字符串并去空格，undefined/null 转为空字符串
+      const headerText = (cell === null || cell === undefined) ? "" : String(cell).trim();
+      headers.push(headerText);
+    }
+
+    // 4. 处理数据行 (去除第一行表头)
     const dataRows = rows.slice(1);
+
     return { headers, dataRows };
   } catch (err) {
     console.error("failed to parse file:", err);
+    // 返回空结构以便在外层报错
     return { headers: [], dataRows: [] };
   }
 };
@@ -437,15 +460,15 @@ const submitUpload = async () => {
     ElMessage.warning("请先选择一个表格文件");
     return;
   }
-  // 再次校验文件类型/大小，防止绕过 beforeUpload
+  
   if (!beforeUpload(selectedFile.value)) {
     return;
   }
+
   uploading.value = true;
   uploadProgress.value = 0;
-  const clientTaskId = generateTaskId(selectedFile.value as File);
-
-  // 模拟上传进度
+  
+  // 模拟进度条
   const uploadInterval = setInterval(() => {
     if (uploadProgress.value < 90) {
       uploadProgress.value += 10;
@@ -453,57 +476,91 @@ const submitUpload = async () => {
   }, 200);
 
   try {
-    // 确保文件解析完成，重新解析以保证数据最新
     const { headers, dataRows } = await parseFileToStore(selectedFile.value as File);
 
-    // 检查是否有实际数据行
-    if (!dataRows || dataRows.length === 0) {
-      ElMessage.error("表格必须包含数据行，不能为空或只上传表头");
-      selectedFile.value = null;
-      fileList.value = [];
-      uploading.value = false;
-      uploadProgress.value = 0;
+    // --- 校验逻辑开始 ---
+
+    // 校验1：表格完全为空（没有表头 或 没有列）
+    if (headers.length === 0) {
+      ElMessage.error("表格为空或无法解析，请检查文件内容");
+      stopUpload(uploadInterval);
       return;
     }
 
-    // 检查表头是否重复
-    if (headers && headers.length > 0) {
-      const headerSet = new Set();
-      const duplicateHeaders = [];
-
-      headers.forEach((header, index) => {
-        if (headerSet.has(header)) {
-          duplicateHeaders.push({ index: index + 1, name: header });
-        } else {
-          headerSet.add(header);
-        }
-      });
-
-      // 如果有重复的表头，显示错误消息并终止上传过程
-      if (duplicateHeaders.length > 0) {
-        const errorMsg = `表格中存在重复的表头：${duplicateHeaders.map(h => `第${h.index}列 "${h.name}"`).join("、")}`;
-        ElMessage.error(errorMsg);
-        selectedFile.value = null;
-        fileList.value = [];
-        uploading.value = false;
-        uploadProgress.value = 0;
-        return;
+    // 校验2：表头有空单元格
+    // 收集所有空表头的列号（从1开始）
+    const emptyHeaderIndices: number[] = [];
+    headers.forEach((header, index) => {
+      if (!header) { // 空字符串、null、undefined
+        emptyHeaderIndices.push(index + 1);
       }
+    });
+
+    if (emptyHeaderIndices.length > 0) {
+      const errorMsg = `第 ${emptyHeaderIndices.join("、")} 列表头为空，请补充完整后上传`;
+      ElMessage.error(errorMsg);
+      stopUpload(uploadInterval);
+      return;
     }
 
-    // 直接执行前端逻辑，不调用后端API
-    await new Promise(resolve => setTimeout(resolve, 500)); // 缩短模拟处理时间
+    // 校验3：必须包含数据行
+    if (!dataRows || dataRows.length === 0) {
+      ElMessage.error("表格仅包含表头，请添加数据行。如确需上传，可手动增加“序号”列等并填写至少一行。");
+      stopUpload(uploadInterval);
+      return;
+    }
+    
+    // 校验4：表头重复校验 (原有逻辑优化)
+    const headerSet = new Set();
+    const duplicateHeaders: string[] = [];
+    headers.forEach((header, index) => {
+      if (headerSet.has(header)) {
+        duplicateHeaders.push(`第${index + 1}列 "${header}"`);
+      } else {
+        headerSet.add(header);
+      }
+    });
+
+    if (duplicateHeaders.length > 0) {
+      ElMessage.error(`存在重复表头：${duplicateHeaders.join("、")}`);
+      stopUpload(uploadInterval);
+      return;
+    }
+
+    // 校验5：localStorage容量检查
+    const dataSize = calculateDataSize(headers, dataRows);
+    const estimatedSize = dataSize * 5; // 乘以5作为安全系数
+    
+    // 获取当前localStorage已使用的空间
+    let usedStorage = 0;
+    for (let key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        usedStorage += localStorage[key].length * 2; // 每个字符占用2字节
+      }
+    }    
+    
+    // 检查是否有足够的空间
+    const availableStorage = 4 * 1024 * 1024 - usedStorage; // 假设localStorage总容量为4MB
+    
+    if (estimatedSize > availableStorage) {
+      ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
+      stopUpload(uploadInterval);
+      return;
+    }
+
+    // --- 校验逻辑结束 ---
+
+    // 只有所有校验通过，才继续后续流程
+    // ... 模拟网络请求延迟
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     clearInterval(uploadInterval);
     uploadProgress.value = 100;
 
-    // 设置任务信息
+    const clientTaskId = generateTaskId(selectedFile.value as File);
     store.createTask(clientTaskId, selectedFile.value?.name || "");
-
-    // 将解析的数据保存到任务中
     store.setUploadedData(clientTaskId, headers, dataRows);
 
-    // 手动触发状态保存，确保数据已写入localStorage
     const saveSuccess = saveState(store.$state);
     if (!saveSuccess) {
       ElMessage.warning("数据保存空间不足，刷新页面可能导致数据丢失");
@@ -515,17 +572,20 @@ const submitUpload = async () => {
       path: "/task-generation",
       query: { taskId: clientTaskId },
     });
+
   } catch (e) {
-    clearInterval(uploadInterval);
     console.error("文件处理失败:", e);
-    showUploadDialog.value = false;
-    ElMessage.error("文件处理失败，请检查文件格式并重试");
-    uploading.value = false;
-    uploadProgress.value = 0;
-  } finally {
-    uploading.value = false;
-    uploadProgress.value = 0;
+    ElMessage.error("文件处理异常，请检查文件格式");
+    stopUpload(uploadInterval);
   }
+};
+
+const stopUpload = (intervalId: any) => {
+  clearInterval(intervalId);
+  selectedFile.value = null;
+  fileList.value = [];
+  uploading.value = false;
+  uploadProgress.value = 0;
 };
 
 const generateTaskId = (file: File) => {
@@ -673,7 +733,7 @@ const generateTaskId = (file: File) => {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .task-id-input {
     width: 100%;
   }
@@ -687,15 +747,16 @@ const generateTaskId = (file: File) => {
   .title {
     font-size: 24px;
   }
+
   .start-btn {
     font-size: 16px;
     height: 44px;
   }
-  
+
   .history-section {
     margin-top: 24px;
   }
-  
+
   .get-task-link {
     margin-top: 24px;
   }
