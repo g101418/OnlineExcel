@@ -307,7 +307,6 @@ const viewTable = (table) => {
 
 const goToTaskGeneration = async () => {
   try {
-    console.log(currentTask.value?.progress)
     // 检查当前任务状态是否为condition
     if (currentTask.value?.progress !== 'condition') {
       // 不强行修改条件，直接跳转到对应页面，由目标页面的逻辑处理
