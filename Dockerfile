@@ -5,7 +5,7 @@ FROM node:20-alpine
 WORKDIR /app/backend
 
 # 安装系统依赖
-RUN apk add --no-cache python3 python3-dev py3-setuptools make g++ git libc6-compat
+RUN apk add --no-cache python3 python3-dev py3-setuptools make g++ git libc6-compat sqlite
 
 # 复制后端代码和依赖文件
 COPY backend/package*.json ./
@@ -14,6 +14,7 @@ COPY backend/db.js ./
 COPY backend/controllers/ ./controllers/
 COPY backend/routes/ ./routes/
 COPY backend/services/ ./services/
+COPY backend/utils/ ./utils/
 COPY backend/dist/ ./dist/
 
 # 安装依赖

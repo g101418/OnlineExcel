@@ -2,17 +2,28 @@
   <div class="error-page">
     <div class="error-content">
       <h1 class="error-code">404</h1>
-      <h2 class="error-message">任务不存在或已失效</h2>
-      <p class="error-desc">未检测到有效的任务信息，请返回首页重新创建任务。</p>
+      <h2 class="error-message">{{ errorMessage }}</h2>
+      <p class="error-desc">{{ errorDesc }}</p>
       <el-button type="primary" size="large" @click="goHome">返回首页</el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
+import { computed } from "vue";
 
 const router = useRouter();
+const route = useRoute();
+
+// 从路由参数获取错误信息，如果没有则使用默认值
+const errorMessage = computed(() => {
+  return route.query.message as string || "任务不存在或已失效";
+});
+
+const errorDesc = computed(() => {
+  return route.query.message as string ? `${route.query.message as string}，请返回首页重新创建任务。` : "未检测到有效的任务信息，任务ID输入错误或任务可能已经删除。";
+});
 
 const goHome = () => {
   router.push({ path: "/" });
