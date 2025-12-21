@@ -322,7 +322,7 @@ const hotSettings = computed(() => ({
     stretchH: 'all',
     rowHeaders: true,
     colHeaders: originalHeaders.value,
-    minRows: 1,
+    minRows: 0,
     maxRows: permissions.row.addable ? undefined : Math.max(tableData.value.length, 1),
     rowHeights: 36,
     autoWrapRow: true,
