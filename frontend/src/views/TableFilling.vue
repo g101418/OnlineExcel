@@ -86,7 +86,8 @@ import { InfoFilled } from '@element-plus/icons-vue'
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
-import 'handsontable/dist/handsontable.full.css'
+import 'handsontable/styles/handsontable.min.css';
+import 'handsontable/styles/ht-theme-classic.min.css';
 import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable, checkSubTaskOverdue } from '../api/task'
 registerAllModules()
 registerLanguageDictionary(zhCN)
@@ -313,6 +314,7 @@ const hotSettings = computed(() => ({
     autoWrapRow: true,
     autoWrapCol: true,
     className: 'htCenter',
+    themeName: 'ht-theme-classic',
     columns: originalHeaders.value.length > 0 ? originalHeaders.value.map((_, colIndex) => {
         const perm = permissions.columns[colIndex]
         return {
@@ -340,16 +342,24 @@ const hotSettings = computed(() => ({
                     const hot = this;
                     const startRow = selection[0].start.row;
                     const executeInsert = (countStr: string) => {
-                        const count = parseInt(countStr);
-                        if (count > 0) {
-                            hot.alter('insert_row_below', startRow, count);
+                        if (!Number.isInteger(parseFloat(countStr))) {
+                            ElMessage.warning('请输入整数');
+                        } else {
+                            const count = parseInt(countStr);
+                            if (count > 0 && count <= 300) {
+                                hot.alter('insert_row_below', startRow, count);
+                            } else if (count <= 0) {
+                                ElMessage.warning('请输入正整数');
+                            } else {
+                                ElMessage.warning('最多只能插入300行');
+                            }
                         }
                         ElMessageBox.close();
                     };
                     ElMessageBox({
                         title: '批量增加行',
                         message: () => h('div', null, [
-                            h('p', { style: 'margin-bottom: 10px' }, '请输入要增加的行数：'),
+                            h('p', { style: 'margin-bottom: 10px' }, '请输入要增加的行数（最多300行）：'),
                             h('div', { class: 'quick-add-btns', style: 'display: flex; gap: 8px; margin-top: 10px' },
                                 [5, 10, 20, 50].map(num => h('button', {
                                     class: 'el-button el-button--small el-button--primary is-plain',
@@ -362,8 +372,8 @@ const hotSettings = computed(() => ({
                         ]),
                         showInput: true,
                         inputValue: '1',
-                        inputPattern: /^[1-9]\d*$/,
-                        inputErrorMessage: '请输入大于0的正整数',
+                        inputPattern: /^[1-9]\d{0,1}$|^[12]\d{2}$|^300$/,
+                        inputErrorMessage: '请输入1-300之间的正整数',
                         showCancelButton: true,
                         confirmButtonText: '确定',
                         cancelButtonText: '取消',
