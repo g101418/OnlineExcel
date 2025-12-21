@@ -527,6 +527,27 @@ const submitUpload = async () => {
       return;
     }
 
+    // 校验5：localStorage容量检查
+    const dataSize = calculateDataSize(headers, dataRows);
+    const estimatedSize = dataSize * 5; // 乘以5作为安全系数
+    
+    // 获取当前localStorage已使用的空间
+    let usedStorage = 0;
+    for (let key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        usedStorage += localStorage[key].length * 2; // 每个字符占用2字节
+      }
+    }    
+    
+    // 检查是否有足够的空间
+    const availableStorage = 4 * 1024 * 1024 - usedStorage; // 假设localStorage总容量为4MB
+    
+    if (estimatedSize > availableStorage) {
+      ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
+      stopUpload(uploadInterval);
+      return;
+    }
+
     // --- 校验逻辑结束 ---
 
     // 只有所有校验通过，才继续后续流程
