@@ -66,14 +66,16 @@
 
     <!-- 查看表格对话框 -->
     <el-dialog v-model="dialogVisible" :title="currentTable.name" width="80%">
+      <div style="height: 65vh;">
       <!-- <el-table :data="currentTable.data" height="80%" border>
         <el-table-column v-for="col in currentTable.columns" :key="col.prop" :prop="col.prop" :label="col.label"
           :width="col.width || 240" />
       </el-table> -->
-      <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="500px"
+      <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="100%"
         :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="currentTable.data">
         <vxe-column v-for="col in currentTable.columns" :key="col.prop" :field="col.prop" :title="col.prop" min-width="120"></vxe-column>
       </vxe-table>
+      </div>
     </el-dialog>
   </div>
 

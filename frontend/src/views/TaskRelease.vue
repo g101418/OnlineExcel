@@ -118,13 +118,14 @@
         style="width: 100%" :cell-style="getCellStyle">
         <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
       </el-table> -->
-      <vxe-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0" border show-overflow
-        show-header-overflow show-footer-overflow max-height="500px" :column-config="{ resizable: true }"
-        :virtual-y-config="{ enabled: true, gt: 0 }" :data="tableData.table_data" :cell-style="getCellStyle">
-        <vxe-column v-for="(column, index) in tableHeaders" :key="index" :field="'col' + index" :title="column"
-          min-width="120"></vxe-column>
-      </vxe-table>
-
+      <div style="height: 65vh;" v-if="tableData && tableData.table_data && tableData.table_data.length > 0">
+        <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="100%"
+          :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="tableData.table_data"
+          :cell-style="getCellStyle">
+          <vxe-column v-for="(column, index) in tableHeaders" :key="index" :field="'col' + index" :title="column"
+            min-width="120"></vxe-column>
+        </vxe-table>
+      </div>
       <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)"
         class="no-data">
         该表格没有数据
@@ -155,11 +156,13 @@
       <!-- <el-table v-if="originalTableData && originalTableData.length > 0" :data="originalTableData" style="width: 100%">
         <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
       </el-table> -->
-      <vxe-table v-if="originalTableData && originalTableData.length > 0" style="width: 100%" border show-overflow show-header-overflow show-footer-overflow max-height="500px"
-        :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="originalTableData">
-        <vxe-column v-for="(column, index) in tableHeaders" :key="index"  :field="'col' + index" :title="column"
-          min-width="120"></vxe-column>
-      </vxe-table>
+      <div v-if="originalTableData && originalTableData.length > 0" style="height: 65vh;">
+        <vxe-table style="width: 100%" border show-overflow show-header-overflow show-footer-overflow max-height="100%"
+          :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="originalTableData">
+          <vxe-column v-for="(column, index) in tableHeaders" :key="index" :field="'col' + index" :title="column"
+            min-width="120"></vxe-column>
+        </vxe-table>
+      </div>
       <div v-else-if="!originalDataLoading && (!originalTableData || originalTableData.length === 0)" class="no-data">
         该表格没有数据
       </div>
