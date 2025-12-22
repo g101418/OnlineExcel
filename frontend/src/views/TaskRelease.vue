@@ -114,10 +114,17 @@
         </el-icon>
         <div>加载中...</div>
       </div>
-      <el-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0" :data="tableData.table_data"
+      <!-- <el-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0" :data="tableData.table_data"
         style="width: 100%" :cell-style="getCellStyle">
         <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
-      </el-table>
+      </el-table> -->
+      <vxe-table v-if="tableData && tableData.table_data && tableData.table_data.length > 0" border show-overflow
+        show-header-overflow show-footer-overflow max-height="500px" :column-config="{ resizable: true }"
+        :virtual-y-config="{ enabled: true, gt: 0 }" :data="tableData.table_data" :cell-style="getCellStyle">
+        <vxe-column v-for="(column, index) in tableHeaders" :key="index" :field="'col' + index" :title="column"
+          min-width="120"></vxe-column>
+      </vxe-table>
+
       <div v-else-if="!tableDataLoading && (!tableData || !tableData.table_data || tableData.table_data.length === 0)"
         class="no-data">
         该表格没有数据
@@ -145,9 +152,14 @@
         </el-icon>
         <div>加载中...</div>
       </div>
-      <el-table v-if="originalTableData && originalTableData.length > 0" :data="originalTableData" style="width: 100%">
+      <!-- <el-table v-if="originalTableData && originalTableData.length > 0" :data="originalTableData" style="width: 100%">
         <el-table-column v-for="(column, index) in tableHeaders" :key="index" :prop="'col' + index" :label="column" />
-      </el-table>
+      </el-table> -->
+      <vxe-table v-if="originalTableData && originalTableData.length > 0" style="width: 100%" border show-overflow show-header-overflow show-footer-overflow max-height="500px"
+        :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="originalTableData">
+        <vxe-column v-for="(column, index) in tableHeaders" :key="index"  :field="'col' + index" :title="column"
+          min-width="120"></vxe-column>
+      </vxe-table>
       <div v-else-if="!originalDataLoading && (!originalTableData || originalTableData.length === 0)" class="no-data">
         该表格没有数据
       </div>
@@ -162,7 +174,7 @@
 
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, shallowRef } from "vue";
 import { ElMessage, ElLoading, ElMessageBox } from "element-plus";
 import { Loading, SuccessFilled } from "@element-plus/icons-vue";
 import TaskInfo from "../components/TaskInfo.vue";

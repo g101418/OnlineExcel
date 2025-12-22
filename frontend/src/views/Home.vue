@@ -417,14 +417,22 @@ const parseFileToStore = async (file: File) => {
       return { headers: [], dataRows: [] };
     }
 
-    // 2. 计算整个表格的最大列数
-    // 如果只看第一行 rows[0].length，可能会漏掉表头后面几列虽然没写字，但数据行有数据的情况
+    // 2. 高效获取整个表格的最大列数
+    // 使用XLSX库提供的工作表范围信息获取最大行列数
     let maxCols = 0;
-    rows.forEach(row => {
-      if (Array.isArray(row) && row.length > maxCols) {
-        maxCols = row.length;
-      }
-    });
+    if (worksheet['!ref']) {
+      // 获取工作表的范围（如A1:G100）
+      const range = XLSX.utils.decode_range(worksheet['!ref']);
+      // 最大列数 = 结束列索引 + 1（因为索引从0开始）
+      maxCols = range.e.c + 1;
+    } else {
+      // 兼容没有!ref的情况，使用传统方法
+      rows.forEach(row => {
+        if (Array.isArray(row) && row.length > maxCols) {
+          maxCols = row.length;
+        }
+      });
+    }
 
     // 如果最大列数为0，说明全是空行
     if (maxCols === 0) {
@@ -529,7 +537,7 @@ const submitUpload = async () => {
 
     // 校验5：localStorage容量检查
     const dataSize = calculateDataSize(headers, dataRows);
-    const estimatedSize = dataSize * 5; // 乘以5作为安全系数
+    const estimatedSize = dataSize * 2; // 乘以3作为安全系数
     
     // 获取当前localStorage已使用的空间
     let usedStorage = 0;
@@ -540,7 +548,7 @@ const submitUpload = async () => {
     }    
     
     // 检查是否有足够的空间
-    const availableStorage = 4 * 1024 * 1024 - usedStorage; // 假设localStorage总容量为4MB
+    const availableStorage = 4.5 * 1024 * 1024 - usedStorage; // 假设localStorage总容量为4.5MB
     
     if (estimatedSize > availableStorage) {
       ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
@@ -552,7 +560,7 @@ const submitUpload = async () => {
 
     // 只有所有校验通过，才继续后续流程
     // ... 模拟网络请求延迟
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     clearInterval(uploadInterval);
     uploadProgress.value = 100;

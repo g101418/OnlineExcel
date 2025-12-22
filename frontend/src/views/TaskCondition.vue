@@ -66,10 +66,14 @@
 
     <!-- 查看表格对话框 -->
     <el-dialog v-model="dialogVisible" :title="currentTable.name" width="80%">
-      <el-table :data="currentTable.data" height="400" border>
+      <!-- <el-table :data="currentTable.data" height="80%" border>
         <el-table-column v-for="col in currentTable.columns" :key="col.prop" :prop="col.prop" :label="col.label"
           :width="col.width || 240" />
-      </el-table>
+      </el-table> -->
+      <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="500px"
+        :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="currentTable.data">
+        <vxe-column v-for="col in currentTable.columns" :key="col.prop" :field="col.prop" :title="col.prop" min-width="120"></vxe-column>
+      </vxe-table>
     </el-dialog>
   </div>
 
@@ -84,7 +88,7 @@
 </template>
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
-import { ref, reactive, onMounted, computed, watch } from "vue";
+import { ref, reactive, onMounted, computed, watch, shallowRef } from "vue";
 // 修改导入路径为相对路径
 import PermissionSettingPanel from "../components/PermissionSettingPanel.vue";
 import { useTaskStore, saveState } from "../stores/task";
