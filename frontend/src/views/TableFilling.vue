@@ -55,22 +55,26 @@
             </div>
         </div>
         <div class="action-buttons">
-            <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                @click="handleSaveDraft" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
+            <el-button @click="downloadTable">
+                下载表格
+            </el-button>
+            <el-button @click="handleSaveDraft" 
+                :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned') || (overdueInfo.isOverdue && !overdueInfo.overduePermission)">
                 暂存
             </el-button>
             <el-tooltip content="将表格恢复到初始状态。" placement="top">
-                <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                    @click="handleRestore" :disabled="overdueInfo.isOverdue && !overdueInfo.overduePermission">
+                <el-button @click="handleRestore" 
+                    :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned') || (overdueInfo.isOverdue && !overdueInfo.overduePermission)">
                     还原表格
                 </el-button>
             </el-tooltip>
-            <el-button v-if="false && taskInfo.fillingStatus === 'submitted'" type="warning" @click="handleWithdraw">
+            <el-button v-if="false" type="warning" @click="handleWithdraw" 
+                :disabled="true">
                 撤回
             </el-button>
             <el-tooltip content="提交后不可修改。" placement="top">
-                <el-button v-if="taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned'"
-                    type="primary" :disabled="!canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
+                <el-button type="primary" 
+                    :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned') || !canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
                     @click="handleSubmit">
                     提交
                 </el-button>
@@ -81,11 +85,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElTooltip, ElDivider, ElMessageBox } from 'element-plus'
+import { ElMessage, ElTooltip, ElDivider, ElMessageBox, ElLoading } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
 import { zhCN, registerLanguageDictionary } from 'handsontable/i18n'
+import * as XLSX from 'xlsx'
 import 'handsontable/styles/handsontable.min.css';
 import 'handsontable/styles/ht-theme-classic.min.css';
 import { getTaskFillingData, saveDraft, submitTable, withdrawTable, restoreTable, checkSubTaskOverdue } from '../api/task'
@@ -159,6 +164,63 @@ const getFillingStatusText = () => {
     if (overdueInfo.isOverdue && !overdueInfo.overduePermission) return '已逾期'
     return '填报中'
 }
+
+// 下载表格数据
+const downloadTable = async () => {
+    try {
+        // 显示加载状态
+        const loading = ElLoading.service({
+            lock: true,
+            text: '正在下载表格数据，请稍候...',
+            background: 'rgba(0, 0, 0, 0.7)'
+        });
+
+        // 获取当前表格数据
+        const currentData = hotTableRef.value?.hotInstance?.getData() || tableData.value;
+        
+        if (!currentData || currentData.length === 0) {
+            ElMessage.warning("该表格没有数据");
+            loading.close();
+            return;
+        }
+
+        // 准备导出数据：使用originalHeaders作为表头
+        const exportData = [];
+        const headers = originalHeaders.value;
+
+        // 添加表头
+        if (headers.length > 0) {
+            exportData.push(headers);
+            // 添加所有数据行
+            exportData.push(...currentData);
+        } else {
+            // 如果没有表头，直接导出数据
+            exportData.push(...currentData);
+        }
+
+        // 创建工作表
+        const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+
+        // 创建工作簿并添加工作表
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+
+        // 生成文件名
+        const exportFileName = `${taskInfo.taskName || '表格数据'}_${new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
+
+        // 导出文件
+        XLSX.writeFile(workbook, exportFileName, { bookType: 'xlsx' });
+
+        // 关闭加载状态
+        loading.close();
+
+        ElMessage.success("表格下载成功");
+    } catch (error) {
+        console.error("表格下载失败:", error);
+        ElMessage.error("表格下载失败，请稍后重试");
+    }
+}
+
 const formatDateSimple = (val: string | number | Date, format: string = 'yyyy-mm-dd'): string => {
     // 空值直接返回空字符串
     if (!val) return '';
@@ -318,7 +380,7 @@ const hotSettings = computed(() => ({
     language: zhCN.languageCode,
     data: tableData.value,
     width: '100%',
-    height: '500px',
+    height: '62vh',
     stretchH: 'all',
     rowHeaders: true,
     colHeaders: originalHeaders.value,

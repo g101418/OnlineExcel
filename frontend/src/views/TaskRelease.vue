@@ -70,12 +70,12 @@
         <el-table-column label="操作" width="350">
           <template #default="scope">
             <el-tooltip content="查看填报者报送的表格。" placement="top">
-              <el-button v-if="scope.row.status === '已上传'" type="primary" size="small" @click="viewTable(scope.row)">
+              <el-button :disabled="!(scope.row.status === '已上传')" type="primary" size="small" @click="viewTable(scope.row)">
                 查看
               </el-button>
             </el-tooltip>
             <el-tooltip content="将填报者报送的表格下载到本地。" placement="top">
-              <el-button v-if="scope.row.status === '已上传'" type="success" size="small"
+              <el-button :disabled="!(scope.row.status === '已上传')" type="success" size="small"
                 @click="downloadTable(scope.row)">
                 下载
               </el-button>
@@ -87,7 +87,7 @@
               </el-button>
             </el-tooltip>
             <el-tooltip content="退回给填报者，由其重新修改。" placement="top">
-              <el-button v-if="scope.row.status === '已上传'" type="warning" size="small" @click="rejectTable(scope.row)">
+              <el-button :disabled="!(scope.row.status === '已上传')" type="warning" size="small" @click="rejectTable(scope.row)">
                 退回
               </el-button>
             </el-tooltip>
