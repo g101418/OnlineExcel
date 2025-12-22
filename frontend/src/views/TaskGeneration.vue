@@ -8,7 +8,8 @@
           <span style="margin-left: 8px"><strong>拆分方式</strong>（拆分表格给不同填报者填报）：</span>
           <el-switch v-model="splitEnabled" active-text="拆分" inactive-text="不拆分"></el-switch>
 
-          <el-select v-if="splitEnabled" v-model="selectedHeader" placeholder="选择用于拆分的表头" style="width: 240px; margin-left: 12px">
+          <el-select v-if="splitEnabled" v-model="selectedHeader" placeholder="选择用于拆分的表头"
+            style="width: 240px; margin-left: 12px">
             <el-option v-for="(h, idx) in headers" :key="idx" :label="h" :value="h" />
           </el-select>
           <el-button type="primary" :disabled="splitEnabled && !selectedHeader" @click="handleSetConditions">
@@ -17,10 +18,14 @@
         </div>
 
         <div class="hot-wrap">
-          <el-table v-if="hotData && hotData.length" :data="hotData" border stripe size="small" class="data-table">
+          <!-- <el-table v-if="hotData && hotData.length" :data="hotData" border stripe size="small" class="data-table">
             <el-table-column v-for="(h, idx) in headers" :key="idx" :prop="h" :label="h"
               :fixed="idx === 0 ? 'left' : false" min-width="120" />
-          </el-table>
+          </el-table> -->
+          <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="100%"
+            :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="hotData">
+            <vxe-column v-for="(h, idx) in headers" :key="idx" :field="h" :title="h" min-width="120"></vxe-column>
+          </vxe-table>
         </div>
       </div>
     </div>
@@ -28,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useTaskStore } from "../stores/task";
@@ -86,7 +91,7 @@ const handleTaskValidityChange = (valid: boolean) => {
 };
 
 onMounted(async () => {
-  
+
   if (currentTask.value) {
     // 设置当前进度为任务生成页面
     store.setProgress(taskId.value, 'generation');
@@ -135,7 +140,7 @@ const goHome = () => {
 
 const handleSetConditions = () => {
   if (!currentTask.value) return;
-  
+
   // 检查当前任务状态是否为generation
   if (currentTask.value.progress !== 'generation') {
     // 不强行修改状态，直接跳转到对应页面，由目标页面的逻辑处理
@@ -145,7 +150,7 @@ const handleSetConditions = () => {
     });
     return;
   }
-  
+
   // 当启用拆分时，检查选择的列是否有空白单元格
   if (splitEnabled.value && selectedHeader.value) {
     // 找到选择的列在headers中的索引
@@ -156,17 +161,17 @@ const handleSetConditions = () => {
         const cellValue = row[columnIndex];
         return cellValue === undefined || cellValue === null || String(cellValue).trim() === '';
       });
-      
+
       if (hasEmptyCells) {
         ElMessage.error(`选择的拆分列 "${selectedHeader.value}" 包含空白单元格，请确保该列所有单元格都有值`);
         return;
       }
     }
   }
-  
+
   // 检查状态是否发生了变更
-  const statusChanged = splitEnabled.value !== currentTask.value.splitEnabled || 
-                       (splitEnabled.value && selectedHeader.value !== currentTask.value.selectedHeader);
+  const statusChanged = splitEnabled.value !== currentTask.value.splitEnabled ||
+    (splitEnabled.value && selectedHeader.value !== currentTask.value.selectedHeader);
 
   if (statusChanged) {
     // 根据当前选择更新store状态
