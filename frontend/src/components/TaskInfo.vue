@@ -9,13 +9,13 @@
       <component :is="headingLevel" class="task-title">{{ title }}</component>
       <div class="meta">
         <p v-if="currentTask.taskName"><strong>任务名称：</strong>{{ currentTask.taskName }}</p>
-        <p>
+        <p style="margin-left:10px;">
           <strong>任务编号：</strong>
           <el-tooltip content="点击复制任务编号" placement="top">
             <span class="copy-clickable" @click="copyTaskId(currentTask.taskId)">{{ currentTask.taskId }}</span>
           </el-tooltip>
         </p>
-        <p v-if="currentTask.fileName"><strong>文件名：</strong>{{ currentTask.fileName }}</p>
+        <p v-if="currentTask.fileName" style="margin-left: 10px;"><strong>文件名：</strong>{{ currentTask.fileName }}</p>
         
       </div>
       <el-divider v-if="showDivider" />

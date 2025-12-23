@@ -21,7 +21,7 @@
             <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
             <el-tag v-else type="danger">已超期</el-tag>
             <span v-if="currentTask?.taskDeadline" class="deadline">截止时间: {{ formatDate(currentTask?.taskDeadline)
-            }}</span>
+              }}</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -70,7 +70,8 @@
         <el-table-column label="操作" width="350">
           <template #default="scope">
             <el-tooltip content="查看填报者报送的表格。" placement="top">
-              <el-button :disabled="!(scope.row.status === '已上传')" type="primary" size="small" @click="viewTable(scope.row)">
+              <el-button :disabled="!(scope.row.status === '已上传')" type="primary" size="small"
+                @click="viewTable(scope.row)">
                 查看
               </el-button>
             </el-tooltip>
@@ -80,15 +81,16 @@
                 下载
               </el-button>
             </el-tooltip>
+            <el-tooltip content="退回给填报者，由其重新修改。" placement="top">
+              <el-button :disabled="!(scope.row.status === '已上传')" type="warning" size="small"
+                @click="rejectTable(scope.row)">
+                退回
+              </el-button>
+            </el-tooltip>
             <el-tooltip content="该填报者已逾期，无法填报，豁免后填报者可以继续填报。" placement="top">
               <el-button v-if="scope.row.taskStatus === 'overdue' && !scope.row.overduePermission" type="warning"
                 size="small" @click="exemptSubTask(scope.row)">
                 逾期豁免
-              </el-button>
-            </el-tooltip>
-            <el-tooltip content="退回给填报者，由其重新修改。" placement="top">
-              <el-button :disabled="!(scope.row.status === '已上传')" type="warning" size="small" @click="rejectTable(scope.row)">
-                退回
               </el-button>
             </el-tooltip>
           </template>
@@ -103,7 +105,7 @@
           <span>填报者报送的表格数据</span>
           <div class="dialog-header-actions">
             <el-button type="primary" size="small" @click="compareTable">{{ showDifferences ? '取消比较' : '与原表格比较'
-            }}</el-button>
+              }}</el-button>
             <el-button size="small" @click="tableDataDialogVisible = false">关闭</el-button>
           </div>
         </div>

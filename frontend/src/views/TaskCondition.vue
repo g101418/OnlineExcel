@@ -185,7 +185,7 @@ const disabledDate = (time: Date) => {
   // 计算今天和3周后的日期
   const today = new Date();
   const nextDay = new Date(today);
-  nextDay.setDate(today.getDate() + 1); // 从第二天开始
+  nextDay.setDate(today.getDate()); // 从当天开始
   nextDay.setHours(0, 0, 0, 0);
 
   const maxDate = new Date(today);

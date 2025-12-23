@@ -10,7 +10,7 @@
                         <span class="copy-clickable" @click="copyTaskId(taskInfo.taskId)">{{ taskInfo.taskId }}</span>
                     </el-tooltip>
                 </p>
-                <p>
+                <p style="margin-left: 10px;">
                     <strong>截止时间：</strong>
                     {{ formatDate(taskInfo.taskDeadline) }}
                 </p>
@@ -20,7 +20,7 @@
                         {{ getFillingStatusText() }}
                     </el-tag>
                 </p>
-                <p>
+                <p style="margin-left: 10px;">
                     <strong>填表说明：</strong>
                     <el-tooltip placement="top" effect="light">
                         <template #content>
@@ -31,7 +31,7 @@
                         </el-icon>
                     </el-tooltip>
                 </p>
-                <p>
+                <p style="margin-left: 10px;">
                     <strong>权限说明：</strong>
                     <el-tooltip placement="top" effect="light">
                         <template #content>
