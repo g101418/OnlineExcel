@@ -16,11 +16,11 @@
     <div v-if="isTaskValid && splitTables.length > 0" class="tables-container">
       <div class="table-header">
         <div class="title-container">
-          <h3>表格列表</h3>
-          <div class="status-info">
+          <h3>填报子任务列表</h3>
+          <div class="status-info" style="margin-left: 10px;">
             <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
             <el-tag v-else type="danger">已超期</el-tag>
-            <span v-if="currentTask?.taskDeadline" class="deadline">截止时间: {{ formatDate(currentTask?.taskDeadline)
+            <span v-if="currentTask?.taskDeadline" class="deadline" style="margin-left: 10px;">截止时间: {{ formatDate(currentTask?.taskDeadline)
               }}</span>
           </div>
         </div>
