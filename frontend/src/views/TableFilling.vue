@@ -50,7 +50,7 @@
                 <HotTable ref="hotTableRef" :key="tableKey" :settings="hotSettings" />
             </div>
             <div v-if="validationErrorCount > 0" class="mt10">
-                <el-alert :title="`当前有 ${validationErrorCount} 处填写错误`" type="error" show-icon :closable="false"
+                <el-alert :title="`当前有 ${validationErrorCount} 处填写错误，请检查后重试，填写要求请见填表说明和权限说明。`" type="error" show-icon :closable="false"
                     :fit-content="true" center :title-size="16" />
             </div>
         </div>
@@ -500,7 +500,7 @@ const hotSettings = computed(() => ({
             errors.value = {};
             hot.validateCells();
             hot.render();
-        }, 200);
+        }, 1500);
     },
     afterValidate: function (isValid: boolean, value: any, row: number, prop: number | string) {
         const col = typeof prop === 'string' ? this.propToCol(prop) : prop;
@@ -526,14 +526,14 @@ const hotSettings = computed(() => ({
         errors.value = {};
         setTimeout(() => {
             hot.validateCells();
-        }, 50);
+        }, 1500);
     },
     afterRowMove: function () {
         const hot = this;
         errors.value = {};
         setTimeout(() => {
             hot.validateCells();
-        }, 50);
+        }, 1500);
     }
 }))
 watch(() => permissions.row, (newRowPermissions) => {
