@@ -1,6 +1,8 @@
 <template>
     <div class="table-filling-root">
         <div class="task-info-section">
+            <FormDescriptionDialog />
+            <PermissionDialog />
             <component :is="headingLevel" class="task-title">{{ taskInfo.taskName || '表格填报任务' }}</component>
             <div class="meta">
                 <p v-if="taskInfo.taskName"><strong>任务名称：</strong>{{ taskInfo.taskName }}</p>
@@ -22,22 +24,22 @@
                 </p>
                 <p style="margin-left: 10px;">
                     <strong>填表说明：</strong>
-                    <el-tooltip placement="top" effect="light">
+                    <el-tooltip placement="bottom" effect="light">
                         <template #content>
-                            <div style="white-space: pre-wrap;">{{ taskInfo.formDescription || '暂无填表说明' }}</div>
+                            <div class="tooltip-content" style="white-space: pre-wrap; max-height: 60vh; overflow-y: auto;">{{ taskInfo.formDescription || '暂无填表说明' }}</div>
                         </template>
-                        <el-icon class="permission-icon">
+                        <el-icon class="permission-icon" @click="showFormDescriptionDialog">
                             <InfoFilled />
                         </el-icon>
                     </el-tooltip>
                 </p>
                 <p style="margin-left: 10px;">
                     <strong>权限说明：</strong>
-                    <el-tooltip placement="top" effect="light">
+                    <el-tooltip placement="bottom" effect="light">
                         <template #content>
-                            <div v-html="permissionTooltipContent"></div>
+                            <div class="tooltip-content" style="max-height: 60vh; overflow-y: auto;" v-html="permissionTooltipContent"></div>
                         </template>
-                        <el-icon class="permission-icon">
+                        <el-icon class="permission-icon" @click="showPermissionDialog">
                             <InfoFilled />
                         </el-icon>
                     </el-tooltip>
@@ -50,7 +52,7 @@
                 <HotTable ref="hotTableRef" :key="tableKey" :settings="hotSettings" />
             </div>
             <div v-if="validationErrorCount > 0" class="mt10">
-                <el-alert :title="`当前有 ${validationErrorCount} 处填写错误`" type="error" show-icon :closable="false"
+                <el-alert :title="`当前有 ${validationErrorCount} 处填写错误，请检查后重试，填写要求请见填表说明和权限说明。`" type="error" show-icon :closable="false"
                     :fit-content="true" center :title-size="16" />
             </div>
         </div>
@@ -85,7 +87,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElTooltip, ElDivider, ElMessageBox, ElLoading } from 'element-plus'
+import { ElMessage, ElTooltip, ElDivider, ElMessageBox, ElLoading, ElDialog } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { HotTable } from '@handsontable/vue3'
 import { registerAllModules } from 'handsontable/registry'
@@ -437,7 +439,7 @@ const hotSettings = computed(() => ({
                         message: () => h('div', null, [
                             h('p', { style: 'margin-bottom: 10px' }, '请输入要增加的行数（最多300行）：'),
                             h('div', { class: 'quick-add-btns', style: 'display: flex; gap: 8px; margin-top: 10px' },
-                                [5, 10, 20, 50].map(num => h('button', {
+                                [5, 10, 20, 50, 200].map(num => h('button', {
                                     class: 'el-button el-button--small el-button--primary is-plain',
                                     onClick: (e: Event) => {
                                         e.preventDefault();
@@ -500,7 +502,7 @@ const hotSettings = computed(() => ({
             errors.value = {};
             hot.validateCells();
             hot.render();
-        }, 200);
+        }, 1500);
     },
     afterValidate: function (isValid: boolean, value: any, row: number, prop: number | string) {
         const col = typeof prop === 'string' ? this.propToCol(prop) : prop;
@@ -526,14 +528,14 @@ const hotSettings = computed(() => ({
         errors.value = {};
         setTimeout(() => {
             hot.validateCells();
-        }, 50);
+        }, 1500);
     },
     afterRowMove: function () {
         const hot = this;
         errors.value = {};
         setTimeout(() => {
             hot.validateCells();
-        }, 50);
+        }, 1500);
     }
 }))
 watch(() => permissions.row, (newRowPermissions) => {
@@ -627,9 +629,70 @@ const fetchOverdueStatus = async () => {
     } catch (error) { console.error(error) }
 }
 const canSubmit = computed(() => validationErrorCount.value === 0)
+
+// 弹出框状态
+const formDescriptionDialogVisible = ref(false)
+const permissionDialogVisible = ref(false)
+
+// 显示填表说明弹出框
+const showFormDescriptionDialog = () => {
+    formDescriptionDialogVisible.value = true
+}
+
+// 显示权限说明弹出框
+const showPermissionDialog = () => {
+    permissionDialogVisible.value = true
+}
+
 onMounted(async () => {
     await fetchTableData()
     await fetchOverdueStatus()
+})
+
+// 弹出框组件
+const FormDescriptionDialog = () => h(ElDialog, {
+    title: '填表说明',
+    modelValue: formDescriptionDialogVisible.value,
+    'onUpdate:modelValue': (value) => { formDescriptionDialogVisible.value = value },
+    width: '60%',
+    beforeClose: (done) => {
+        done()
+    }
+}, {
+    default: () => h('div', {
+        style: {
+            'max-height': '60vh',
+            'overflow-y': 'auto',
+            'white-space': 'pre-wrap',
+            'line-height': '1.6'
+        }
+    }, taskInfo.formDescription || '暂无填表说明'),
+    footer: () => h('div', {
+        style: { 'text-align': 'right' }
+    })
+})
+
+// 权限说明弹出框组件
+const PermissionDialog = () => h(ElDialog, {
+    title: '权限说明',
+    modelValue: permissionDialogVisible.value,
+    'onUpdate:modelValue': (value) => { permissionDialogVisible.value = value },
+    width: '60%',
+    beforeClose: (done) => {
+        done()
+    }
+}, {
+    default: () => h('div', {
+        style: {
+            'max-height': '60vh',
+            'overflow-y': 'auto',
+            'line-height': '1.6'
+        },
+        innerHTML: permissionTooltipContent.value
+    }),
+    footer: () => h('div', {
+        style: { 'text-align': 'right' }
+    })
 })
 </script>
 <style scoped lang="less">
@@ -675,6 +738,14 @@ onMounted(async () => {
                 color: #409eff;
                 margin-left: 4px;
                 font-size: 16px;
+                &:hover {
+                    opacity: 0.8;
+                }
+            }
+            
+            .tooltip-content {
+                max-height: 300px;
+                overflow-y: auto;
             }
         }
     }
