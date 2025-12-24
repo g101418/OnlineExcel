@@ -6,7 +6,7 @@
             <component :is="headingLevel" class="task-title">{{ taskInfo.taskName || '表格填报任务' }}</component>
             <div class="meta">
                 <p v-if="taskInfo.taskName"><strong>任务名称：</strong>{{ taskInfo.taskName }}</p>
-                <p>
+                <p style="margin-left: 10px;">
                     <strong>任务编号：</strong>
                     <el-tooltip content="点击复制任务编号" placement="top">
                         <span class="copy-clickable" @click="copyTaskId(taskInfo.taskId)">{{ taskInfo.taskId }}</span>
@@ -16,7 +16,7 @@
                     <strong>截止时间：</strong>
                     {{ formatDate(taskInfo.taskDeadline) }}
                 </p>
-                <p>
+                <p style="margin-left: 10px;">
                     <strong>状态：</strong>
                     <el-tag :type="getFillingStatusType()" size="small">
                         {{ getFillingStatusText() }}
