@@ -25,7 +25,6 @@ const db = new sqlite3.Database('./tasks.db', (err) => {
       header TEXT,
       splitData JSON NOT NULL DEFAULT '[]',
       permissions JSON NOT NULL DEFAULT '{}',
-      permissionPanelCollapsed BOOLEAN DEFAULT FALSE,
       progress TEXT DEFAULT 'generation',
       status TEXT DEFAULT 'draft',
       formDescription TEXT DEFAULT '',

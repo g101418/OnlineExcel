@@ -10,7 +10,7 @@
 
           <el-select v-if="splitEnabled" v-model="selectedHeader" placeholder="选择用于拆分的表头"
             style="width: 240px; margin-left: 12px">
-            <el-option v-for="(h, idx) in headers" :key="idx" :label="h" :value="h" />
+            <el-option v-for="(h, idx) in uploadedHeaders" :key="idx" :label="h" :value="h" />
           </el-select>
           <el-button type="primary" :disabled="splitEnabled && !selectedHeader" @click="handleSetConditions">
             {{ splitEnabled ? '下一步' : '下一步' }}
@@ -24,7 +24,7 @@
           </el-table> -->
           <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="100%"
             :column-config="{ resizable: true }" :virtual-y-config="{ enabled: true, gt: 0 }" :data="hotData">
-            <vxe-column v-for="(h, idx) in headers" :key="idx" :field="h" :title="h" min-width="120"></vxe-column>
+            <vxe-column v-for="(h, idx) in uploadedHeaders" :key="idx" :field="h" :title="h" min-width="120"></vxe-column>
           </vxe-table>
         </div>
       </div>
@@ -33,11 +33,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, watch, shallowRef } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { useTaskStore } from "../stores/task";
+import { useTaskStore, saveState } from "../stores/task";
 import TaskInfo from "../components/TaskInfo.vue";
+import SparkMD5 from "spark-md5";
 
 const route = useRoute();
 const router = useRouter();
@@ -46,61 +47,58 @@ const store = useTaskStore();
 // 从路由query获取taskId
 const taskId = computed(() => route.query.taskId as string);
 
-// 从store获取当前任务（改为ref以便响应式更新）
-const currentTask = ref(null);
+// 本地变量存储当前任务数据
+let currentTaskData = null;
+let uploadedHeaders = [];
+let uploadedData = [];
+let taskFileName = '';
 
-// 监听store.tasks的变化，确保currentTask能够响应progress的更新
-watch(
-  () => store.tasks,
-  () => {
-    if (!taskId.value) {
-      currentTask.value = null;
-      return;
-    }
-    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
-  },
-  { deep: true, immediate: true }
-);
+// 本地变量存储用户操作
+const splitEnabled = ref(false);
+const selectedHeader = ref('');
+const hotData = ref<any[]>([]);
+
+// 任务有效性状态（由TaskInfo组件传递）
+const isTaskValid = ref(true);
 
 // 监听taskId的变化，确保切换任务时能正确获取当前任务
 watch(
   () => taskId.value,
   () => {
-    if (!taskId.value) {
-      currentTask.value = null;
-      return;
+    if (taskId.value) {
+      // 仅在taskId变化时获取一次任务数据
+      const task = store.tasks.find(task => task.taskId === taskId.value);
+      if (task) {
+        currentTaskData = task;
+        uploadedHeaders = task.uploadedHeaders || [];
+        uploadedData = task.uploadedData || [];
+        taskFileName = task.fileName || '';
+        
+        // 初始化本地操作状态
+        splitEnabled.value = task.splitEnabled || false;
+        selectedHeader.value = task.selectedHeader || '';
+      }
     }
-    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
   },
   { immediate: true }
 );
-
-// 从当前任务获取数据
-const fileName = computed(() => currentTask.value?.fileName || '');
-const headers = computed(() => currentTask.value?.uploadedHeaders || []);
-const rawData = computed(() => currentTask.value?.uploadedData || []);
-const hotData = ref<any[]>([]);
-const splitEnabled = ref(currentTask.value?.splitEnabled || false);
-const selectedHeader = ref(currentTask.value?.selectedHeader || '');
-// 任务有效性状态（由TaskInfo组件传递）
-const isTaskValid = ref(true);
 
 // 处理任务有效性变化
 const handleTaskValidityChange = (valid: boolean) => {
   isTaskValid.value = valid;
 };
 
-onMounted(async () => {
-
-  if (currentTask.value) {
+onMounted(() => {
+  if (currentTaskData) {
     // 设置当前进度为任务生成页面
     store.setProgress(taskId.value, 'generation');
+    
     // 直接处理数据，路由参数与store的一致性已由TaskInfo组件检查
     // 将原始数据转换为表格需要的对象格式
-    if (rawData.value && rawData.value.length && headers.value.length) {
-      hotData.value = rawData.value.map((row: any[]) => {
+    if (uploadedData.length > 0 && uploadedHeaders.length > 0) {
+      hotData.value = uploadedData.map((row: any[]) => {
         const obj: any = {};
-        headers.value.forEach((hd, idx) => {
+        uploadedHeaders.forEach((hd, idx) => {
           obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
         });
         return obj;
@@ -113,36 +111,15 @@ onBeforeUnmount(() => {
   // 保持空
 });
 
-// 监听路由参数变化，手动修改URL时更新页面
-watch(
-  () => route.query,
-  (newQuery) => {
-    // 当路由参数变化时，重新处理数据
-    // 路由参数与store的一致性已由TaskInfo组件检查
-    if (rawData.value && rawData.value.length && headers.value.length) {
-      hotData.value = rawData.value.map((row: any[]) => {
-        const obj: any = {};
-        headers.value.forEach((hd, idx) => {
-          obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
-        });
-        return obj;
-      });
-    } else {
-      hotData.value = [];
-    }
-  },
-  { deep: true }
-);
-
 const goHome = () => {
   router.push({ path: "/" });
 };
 
-const handleSetConditions = () => {
-  if (!currentTask.value) return;
+const handleSetConditions = async () => {
+  if (!currentTaskData) return;
 
   // 检查当前任务状态是否为generation
-  if (currentTask.value.progress !== 'generation') {
+  if (currentTaskData.progress !== 'generation') {
     // 不强行修改状态，直接跳转到对应页面，由目标页面的逻辑处理
     router.push({
       path: "/task-condition",
@@ -154,10 +131,10 @@ const handleSetConditions = () => {
   // 当启用拆分时，检查选择的列是否有空白单元格
   if (splitEnabled.value && selectedHeader.value) {
     // 找到选择的列在headers中的索引
-    const columnIndex = headers.value.indexOf(selectedHeader.value);
+    const columnIndex = uploadedHeaders.indexOf(selectedHeader.value);
     if (columnIndex !== -1) {
       // 检查该列是否有空白单元格
-      const hasEmptyCells = rawData.value.some(row => {
+      const hasEmptyCells = uploadedData.some(row => {
         const cellValue = row[columnIndex];
         return cellValue === undefined || cellValue === null || String(cellValue).trim() === '';
       });
@@ -170,8 +147,8 @@ const handleSetConditions = () => {
   }
 
   // 检查状态是否发生了变更
-  const statusChanged = splitEnabled.value !== currentTask.value.splitEnabled ||
-    (splitEnabled.value && selectedHeader.value !== currentTask.value.selectedHeader);
+  const statusChanged = splitEnabled.value !== currentTaskData.splitEnabled ||
+    (splitEnabled.value && selectedHeader.value !== currentTaskData.selectedHeader);
 
   if (statusChanged) {
     // 根据当前选择更新store状态
@@ -185,8 +162,43 @@ const handleSetConditions = () => {
     }
   }
 
+  // 生成表格随机编码
+  const generateTableCode = (table, index) => {
+    const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
+    const tableIdentifier = table.name || `table_${index}`;
+    const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
+    return SparkMD5.hash(metaStr).slice(0, 28);
+  };
+
+  // 生成splitTables数据
+  let splitTables = [];
+  if (splitEnabled.value && selectedHeader.value) {
+    // 如果启用了拆分，获取拆分后的数据
+    const task = store.tasks.find(task => task.taskId === taskId.value);
+    if (task && task.splitData && task.splitData.length > 0) {
+      splitTables = task.splitData;
+    }
+  } else {
+    // 未拆分的情况：使用完整数据作为一个表格
+    splitTables = [{ name: taskFileName || '未拆分表格', data: uploadedData, headers: uploadedHeaders }];
+  }
+
+  // 为所有表格生成随机编码并保存到store
+  const tableCodes = splitTables.map((table, index) => generateTableCode(table, index));
+  // 保存到store时保留完整信息，方便前端使用
+  const tableLinks = splitTables.map((table, index) => ({
+    name: table.name,
+    code: tableCodes[index],
+    taskName: currentTaskData?.taskName || ''
+  }));
+  store.setTableLinks(taskId.value, tableLinks);
+
   // 设置进度为条件设置页面（只有在当前状态是generation时才执行）
   store.setProgress(taskId.value, 'condition');
+  
+  // 手动保存状态到本地存储
+  await saveState(store.$state);
+  
   router.push({
     path: "/task-condition",
     query: { taskId: taskId.value },

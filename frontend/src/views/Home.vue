@@ -84,7 +84,7 @@
 
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { ref, onMounted, onActivated, computed, watch } from "vue";
+import { ref, onMounted, onActivated, computed, shallowRef } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import SparkMD5 from "spark-md5";
@@ -105,7 +105,7 @@ const uploading = ref(false);
 const uploadProgress = ref(0);
 
 // 历史表格信息
-const historicalTables = ref([]);
+const historicalTables = shallowRef([]);
 const hasHistoricalData = computed(() => historicalTables.value.length > 0);
 
 // 根据任务ID获取任务链接
@@ -255,7 +255,10 @@ const deleteHistoricalTask = async (taskId) => {
     const success = await deleteSingleTask(taskId);
     if (success) {
       ElMessage.success('任务已删除');
-      // 不需要手动调用loadHistoricalData，watch监听器会自动处理数据更新
+      // 保存更新后的状态到本地存储
+      await saveState(store.$state);
+      
+      loadHistoricalData();
     } else {
       ElMessage.error('删除任务失败，请检查网络连接或稍后重试');
     }
@@ -282,7 +285,7 @@ const clearHistory = async () => {
     // 记录删除失败的任务数
     let failedCount = 0;
 
-    // 逐个删除任务
+    // 逐个删除任务，每个任务都会与服务器通信
     for (const task of allTasks) {
       const success = await deleteSingleTask(task.taskId);
       if (!success) {
@@ -290,10 +293,13 @@ const clearHistory = async () => {
       }
     }
 
+    await saveState(store.$state);
+
     if (failedCount > 0) {
       ElMessage.error(`部分任务删除失败（${failedCount}个），请检查网络连接或稍后重试`);
     } else {
       ElMessage.success('历史记录已清除');
+      setTimeout(() => window.location.reload(), 700);
     }
   } catch (error) {
     // 用户取消清除
@@ -307,7 +313,7 @@ const clearHistory = async () => {
 const loadHistoricalData = async (deleteNonExistent = true) => {
   // 清空当前历史记录
   historicalTables.value = [];
-
+  let tmpHistoricalTables = [];
   // 遍历store中的所有任务
   for (const task of store.tasks) {
     // 计算数据大小
@@ -329,22 +335,25 @@ const loadHistoricalData = async (deleteNonExistent = true) => {
         // 调用API检查任务是否存在
         await checkIdExists(task.taskId);
         // 任务存在，添加到历史记录列表
-        historicalTables.value.push(historicalItem);
+        tmpHistoricalTables.push(historicalItem);
       } catch (error) {
         // 任务不存在且允许删除，从本地删除
         if (deleteNonExistent) {
           console.log(`任务 ${task.taskId} 不存在，从本地删除`);
           store.deleteTask(task.taskId);
+          // 保存更新后的状态到本地存储
+          await saveState(store.$state);
         } else {
           // 不允许删除时，仍然添加到历史记录列表
-          historicalTables.value.push(historicalItem);
+          tmpHistoricalTables.push(historicalItem);
         }
       }
     } else {
       // 非已发布任务，直接添加到历史记录列表
-      historicalTables.value.push(historicalItem);
+      tmpHistoricalTables.push(historicalItem);
     }
   }
+  historicalTables.value = tmpHistoricalTables;
 };
 
 // 页面加载时加载历史表格数据
@@ -356,15 +365,6 @@ onMounted(async () => {
 onActivated(async () => {
   await loadHistoricalData();
 });
-
-// 监听store.tasks的变化，当任务列表变化时重新加载历史数据
-watch(
-  () => store.tasks,
-  async () => {
-    await loadHistoricalData();
-  },
-  { deep: true }
-);
 
 const openUploadDialog = async () => {
   showUploadDialog.value = true;
@@ -386,10 +386,10 @@ const beforeUpload = (file) => {
     ElMessage.error("只支持 .xls / .xlsx / .csv / .et 格式的文件");
     return false;
   }
-  // max 1MB
-  const isLt1M = file.size / 1024 / 1024 < 1;
-  if (!isLt1M) {
-    ElMessage.error("文件不能超过 1MB");
+  // max 20MB
+  const isLt20M = file.size / 1024 / 1024 < 20;
+  if (!isLt20M) {
+    ElMessage.error("文件不能超过 20MB");
     return false;
   }
   return true;
@@ -468,14 +468,14 @@ const submitUpload = async () => {
     ElMessage.warning("请先选择一个表格文件");
     return;
   }
-  
+
   if (!beforeUpload(selectedFile.value)) {
     return;
   }
 
   uploading.value = true;
   uploadProgress.value = 0;
-  
+
   // 模拟进度条
   const uploadInterval = setInterval(() => {
     if (uploadProgress.value < 90) {
@@ -517,7 +517,7 @@ const submitUpload = async () => {
       stopUpload(uploadInterval);
       return;
     }
-    
+
     // 校验4：表头重复校验 (原有逻辑优化)
     const headerSet = new Set();
     const duplicateHeaders: string[] = [];
@@ -535,26 +535,15 @@ const submitUpload = async () => {
       return;
     }
 
-    // 校验5：localStorage容量检查
-    const dataSize = calculateDataSize(headers, dataRows);
-    const estimatedSize = dataSize * 2; // 乘以3作为安全系数
-    
-    // 获取当前localStorage已使用的空间
-    let usedStorage = 0;
-    for (let key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
-        usedStorage += localStorage[key].length * 2; // 每个字符占用2字节
-      }
-    }    
-    
-    // 检查是否有足够的空间
-    const availableStorage = 4.5 * 1024 * 1024 - usedStorage; // 假设localStorage总容量为4.5MB
-    
-    if (estimatedSize > availableStorage) {
-      ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
-      stopUpload(uploadInterval);
-      return;
-    }
+    // // 校验5：localStorage容量检查
+    // const dataSize = calculateDataSize(headers, dataRows);
+    // const estimatedSize = dataSize * 2; // 乘以3作为安全系数
+
+    // if (estimatedSize > 30 * 1024 * 1024) {
+    //   ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
+    //   stopUpload(uploadInterval);
+    //   return;
+    // }
 
     // --- 校验逻辑结束 ---
 
@@ -569,7 +558,7 @@ const submitUpload = async () => {
     store.createTask(clientTaskId, selectedFile.value?.name || "");
     store.setUploadedData(clientTaskId, headers, dataRows);
 
-    const saveSuccess = saveState(store.$state);
+    const saveSuccess = await saveState(store.$state);
     if (!saveSuccess) {
       ElMessage.warning("数据保存空间不足，刷新页面可能导致数据丢失");
     }

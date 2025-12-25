@@ -265,6 +265,8 @@ const updateValidation = (column: any) => {
     regexName: "",
     format: "", // 重置日期格式为默认值（无限制）
   };
+  // 触发响应式更新
+  localColumns.value = [...localColumns.value];
 };
 
 // 处理可编辑状态变化
@@ -273,6 +275,8 @@ const handleEditableChange = (column: any) => {
   if (!column.editable) {
     column.validation = getEmptyValidation();
   }
+  // 触发响应式更新
+  localColumns.value = [...localColumns.value];
 };
 
 // 选择正则表达式预设
@@ -282,43 +286,56 @@ const selectRegexPreset = (column: any) => {
   } else {
     column.validation.regex = "";
   }
+  // 触发响应式更新
+  localColumns.value = [...localColumns.value];
 };
 
-// 监听 columns 变化
-watch(() => props.columns, (newColumns) => {
-  if (newColumns && newColumns.length > 0) {
-    localColumns.value = newColumns;
-  }
-}, { deep: true });
+// 优化：移除深度监听props.columns，仅在必要时手动更新
+// 因为列配置通常只在初始化时设置，不需要持续监听变化
 
-// 监听权限设置变化，自动保存到 store
-watch(() => localColumns.value, (newColumns) => {
-  if (newColumns && newColumns.length > 0) {
+// 防抖函数实现
+const debounce = (fn, delay) => {
+  let timer = null;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      fn.apply(this, args);
+    }, delay);
+  };
+};
+
+// 创建防抖的列权限保存函数
+const debouncedSetColumnPermissions = debounce((newColumns) => {
+  if (newColumns && newColumns.length > 0 && taskId.value) {
     store.setColumnPermissions(taskId.value, newColumns);
   }
-}, { deep: true });
+}, 500); // 增加防抖时间到800ms，减少写入频率
+
+// 监听权限设置变化，使用防抖保存到 store
+// 现在使用ref和深度监听来捕获数组内部元素的属性变化
+watch(() => localColumns.value, (newColumns) => {
+  debouncedSetColumnPermissions(newColumns);
+}, { deep: true }); // 开启深度监听，确保内部属性变化能被捕获
 
 // 监听currentTask.permissions变化，初始化本地rowPermissions
-watch(() => currentTask.value?.permissions, (newPermissions) => {
-  if (newPermissions?.row) {
-    // 只有当store中的rowPermissions与本地不同时才更新，避免递归
-    const isDifferent = JSON.stringify(newPermissions.row) !== JSON.stringify(rowPermissions.value);
-    if (isDifferent) {
-      rowPermissions.value = { ...newPermissions.row };
-    }
+watch(() => currentTask.value?.permissions?.row, (newRowPerms) => {
+  if (newRowPerms) {
+    // 使用浅比较代替JSON.stringify，减少计算开销
+    rowPermissions.value = { ...newRowPerms };
   }
 }, { deep: true, immediate: true });
 
-// 监听行权限变化，自动保存到 store
-watch(() => rowPermissions.value, (newRowPermissions) => {
-  if (newRowPermissions) {
-    // 检查是否与store中的值相同，避免递归
-    const storeRowPermissions = currentTask.value?.permissions?.row || {};
-    if (JSON.stringify(newRowPermissions) !== JSON.stringify(storeRowPermissions)) {
-      store.setRowPermissions(taskId.value, newRowPermissions);
-    }
+// 创建防抖的行权限保存函数
+const debouncedSetRowPermissions = debounce((newRowPermissions) => {
+  if (newRowPermissions && taskId.value) {
+    store.setRowPermissions(taskId.value, newRowPermissions);
   }
-}, { deep: true });
+}, 500); // 增加防抖时间到800ms，减少写入频率
+
+// 监听行权限变化，使用防抖保存到 store
+watch(() => rowPermissions.value, (newRowPermissions) => {
+  debouncedSetRowPermissions(newRowPermissions);
+}, { deep: true }); // 开启深度监听，确保属性变化能被捕获
 
 // 监听split和header变化，当列变为拆分列时重新初始化权限
 watch([split, header], () => {

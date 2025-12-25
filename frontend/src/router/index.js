@@ -48,8 +48,40 @@ const router = createRouter({
     routes,
 });
 
+// 等待store初始化完成的函数
+const waitForStoreInit = async (taskStore) => {
+    // 如果已经初始化，直接返回
+    if (taskStore.isInitialized) return;
+    
+    // 检查是否已经有初始化Promise
+    if (window.__storeInitPromise__) {
+        await window.__storeInitPromise__;
+        return;
+    }
+    
+    // 否则使用轮询方式，但设置最大等待时间
+    return new Promise((resolve, reject) => {
+        let checkCount = 0;
+        const maxChecks = 50; // 最大检查50次，共5秒
+        
+        const checkInit = () => {
+            checkCount++;
+            if (taskStore.isInitialized) {
+                resolve();
+            } else if (checkCount >= maxChecks) {
+                console.warn('Store初始化超时，继续导航');
+                resolve(); // 超时后仍继续导航，避免无限等待
+            } else {
+                // 每100毫秒检查一次
+                setTimeout(checkInit, 100);
+            }
+        };
+        checkInit();
+    });
+};
+
 // 添加路由导航守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
     // 特殊处理TableFilling页面，直接允许访问
     if (to.name === 'TableFilling') {
         next();
@@ -58,6 +90,9 @@ router.beforeEach((to, from, next) => {
     
     // 获取task store
     const taskStore = useTaskStore();
+    
+    // 等待store初始化完成
+    await waitForStoreInit(taskStore);
     
     // 检查是否有taskId参数
     const taskId = to.query.taskId;
@@ -74,7 +109,7 @@ router.beforeEach((to, from, next) => {
         }
         
         // 严格控制TaskGeneration和TaskCondition页面的访问
-        if (to.name === 'TaskGeneration' && task.progress !== 'generation') {
+        if (task && to.name === 'TaskGeneration' && task.progress !== 'generation') {
             // 当前任务进度不是generation，不允许访问TaskGeneration页面
             if (task.progress === 'condition') {
                 next({ name: 'TaskCondition', query: { taskId } });
@@ -86,7 +121,7 @@ router.beforeEach((to, from, next) => {
             return;
         }
         
-        if (to.name === 'TaskCondition' && task.progress !== 'condition') {
+        if (task && to.name === 'TaskCondition' && task.progress !== 'condition') {
             // 当前任务进度不是condition，不允许访问TaskCondition页面
             if (task.progress === 'generation') {
                 next({ name: 'TaskGeneration', query: { taskId } });
