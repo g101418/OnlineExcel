@@ -10,7 +10,21 @@
       </div>
     </div>
 
-    <TaskInfo title="发布任务" />
+    <div class="task-info">
+      <h2 class="task-title"> 任务发布 </h2>
+      <div class="meta">
+        <p><strong>任务名称：</strong>{{ serverTaskData.taskName }}</p>
+        <p style="margin-left:10px;">
+          <strong>任务编号：</strong>
+          <el-tooltip content="点击复制任务编号" placement="top">
+            <span class="copy-clickable" @click="copyTaskId(serverTaskData.taskId)">{{ serverTaskData.taskId }}</span>
+          </el-tooltip>
+        </p>
+        <p v-if="serverTaskData.fileName" style="margin-left: 10px;"><strong>文件名：</strong>{{ serverTaskData.fileName }}</p>
+
+      </div>
+      <el-divider />
+    </div>
 
     <!-- 显示表格列表 -->
     <div v-if="isTaskValid && splitTables.length > 0" class="tables-container">
@@ -18,10 +32,11 @@
         <div class="title-container">
           <h3>填报子任务列表</h3>
           <div class="status-info" style="margin-left: 10px;">
-            <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
+            <el-tag v-if="serverTaskData.status === 'draft'" type="success">进行中</el-tag>
             <el-tag v-else type="danger">已超期</el-tag>
-            <span v-if="currentTask?.taskDeadline" class="deadline" style="margin-left: 10px;">截止时间: {{ formatDate(currentTask?.taskDeadline)
-              }}</span>
+            <span v-if="serverTaskData.taskDeadline" class="deadline" style="margin-left: 10px;">截止时间: {{
+              formatDate(serverTaskData.taskDeadline)
+            }}</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -202,6 +217,15 @@ const split = computed(() => currentTask.value?.split || false);
 const header = computed(() => currentTask.value?.header || '');
 const splitData = computed(() => currentTask.value?.splitData || []);
 
+// 从服务端获取的任务数据
+const serverTaskData = ref({
+  taskName: '',
+  taskId: '',
+  fileName: '',
+  taskDeadline: null,
+  status: 'draft'
+});
+
 // 任务有效性检查
 const isTaskValid = ref(true);
 
@@ -286,6 +310,38 @@ const copyLink = async (code) => {
       if (success) {
         ElMessage.success({
           message: "链接已成功复制到剪贴板！",
+          duration: 1000,
+        });
+      } else {
+        throw new Error("execCommand failed");
+      }
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
+};
+
+const copyTaskId = async (taskId) => {
+  if (!taskId) return;
+  try {
+    await navigator.clipboard.writeText(taskId);
+    ElMessage.success({
+      message: "任务编号已成功复制到剪贴板！",
+      duration: 1000,
+    });
+  } catch (err) {
+    // 兼容方案
+    const textarea = document.createElement("textarea");
+    textarea.value = taskId;
+    textarea.style.position = "fixed";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      const success = document.execCommand("copy");
+      if (success) {
+        ElMessage.success({
+          message: "任务编号已成功复制到剪贴板！",
           duration: 1000,
         });
       } else {
@@ -391,11 +447,11 @@ const viewTable = async (table) => {
         return rowObj;
       });
       tableData = {
-          ...response,
-          table_data: tableDataArray
-        };
-        // 使用当前任务的uploadedHeaders作为表头
-        tableHeaders = currentTask.value?.uploadedHeaders || [];
+        ...response,
+        table_data: tableDataArray
+      };
+      // 使用当前任务的uploadedHeaders作为表头
+      tableHeaders = currentTask.value?.uploadedHeaders || [];
     });
 
     // 从本地存储获取对应的表格数据
@@ -851,7 +907,7 @@ const fetchSplitTables = async () => {
     }
 
     const taskId = route.query.taskId as string;
-    
+
     // 并行调用API从服务端获取数据
     const [response, subtaskStatuses, taskOverdueInfo] = await Promise.all([
       getTaskReleaseData(taskId),
@@ -865,6 +921,15 @@ const fetchSplitTables = async () => {
       router.push({ path: "/error", query: { message: "获取的数据格式无效" } });
       return;
     }
+
+    // 更新从服务端获取的任务数据
+    serverTaskData.value = {
+      taskName: response.taskName || '',
+      taskId: response.taskId || '',
+      fileName: response.fileName || '',
+      taskDeadline: response.taskDeadline || null,
+      status: response.status || 'draft'
+    };
 
     // 处理未拆分表格的情况：如果splitData为空，使用uploadedData创建一个单元素的splitData数组
     if (!response.splitData || response.splitData.length === 0) {
@@ -882,7 +947,7 @@ const fetchSplitTables = async () => {
         return;
       }
     }
-    
+
     // 将服务端返回的数据保存到本地store
     const existingTaskIndex = store.tasks.findIndex(task => task.taskId === response.taskId);
     if (existingTaskIndex !== -1) {
@@ -899,7 +964,7 @@ const fetchSplitTables = async () => {
         // 更新时间
         updateTime: new Date().toLocaleString('zh-CN')
       };
-      
+
       // 直接替换整个任务对象
       store.tasks[existingTaskIndex] = updatedTask;
 
@@ -917,7 +982,7 @@ const fetchSplitTables = async () => {
           ...response,
           updateTime: new Date().toLocaleString('zh-CN') // 更新时间
         };
-        
+
         // 手动保存状态到本地存储
         await saveState(store.$state);
       }
@@ -1011,10 +1076,10 @@ onMounted(() => {
     // 设置进度为任务发布页面
     store.setProgress(taskId.value, 'release');
   }
-  
+
   // 初始化表格数据
   fetchSplitTables();
-  
+
   // 设置提示框10秒后自动消失
   showNotification.value = true;
   if (notificationTimer) {
@@ -1140,6 +1205,48 @@ onUnmounted(() => {
 .notification-icon {
   color: #52c41a;
   font-size: 18px;
+}
+
+.task-info {
+  .task-title {
+    margin-bottom: 16px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    margin-bottom: 16px;
+
+    p {
+      margin: 0;
+      font-size: 14px;
+
+      .copy-clickable {
+        cursor: pointer;
+        color: #409eff;
+
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+  }
+
+  .no-data {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 20px 0;
+
+    p {
+      font-size: 16px;
+      color: #606266;
+    }
+  }
 }
 
 /* 动画效果 */
