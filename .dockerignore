@@ -1,0 +1,9 @@
+# 排除数据库文件（不打包进镜像）
+backend/task.db
+# 排除本地日志文件（不打包进镜像）
+backend/logs/
+# 排除本地依赖（容器内重新安装）
+node_modules/
+# 其他无用文件
+npm-debug.log
+.DS_Store

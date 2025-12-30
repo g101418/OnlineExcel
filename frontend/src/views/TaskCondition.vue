@@ -38,7 +38,7 @@
       <div v-if="splitTables.length > 0" class="split-tables-list">
         <div class="table-header">
           <h3>拆分后的表格</h3>
-          <p v-if="header"><strong>拆分字段：</strong>{{ header }}</p>
+          <p v-if="currentTaskData?.selectedHeader"><strong>拆分字段：</strong>{{ currentTaskData.selectedHeader }}</p>
         </div>
         <el-table :data="splitTables" style="width: 100%">
           <el-table-column type="index" label="序号" width="80" />
@@ -59,37 +59,36 @@
 
       <!-- 添加操作按钮 -->
       <div class="actions">
+        <el-button @click="saveTemporarySettings">暂存设置</el-button>
+        <el-button type="info" @click="goToTaskGeneration">返回拆分表格</el-button>
         <el-button type="primary" @click="saveSettingsAndRelease">上传表格并发布任务</el-button>
-        <el-button @click="goToTaskGeneration">返回拆分表格</el-button>
       </div>
     </div>
 
     <!-- 查看表格对话框 -->
     <el-dialog v-model="dialogVisible" :title="currentTable.name" width="80%">
-      <el-table :data="currentTable.data" height="400" border>
-        <el-table-column v-for="col in currentTable.columns" :key="col.prop" :prop="col.prop" :label="col.label"
-          :width="col.width || 240" />
-      </el-table>
+      <div style="height: 65vh;">
+      <!-- 使用vxe-table的虚拟滚动优化大数据渲染 -->
+      <vxe-table border show-overflow show-header-overflow show-footer-overflow max-height="100%"
+        :column-config="{ resizable: true }"
+        :virtual-y-config="{ enabled: true, gt: 100 }"
+        :pagination-config="{ pageSize: 200 }"
+        :data="currentTable.data">
+        <vxe-column v-for="col in currentTable.columns" :key="col.field" :field="col.field" :title="col.title" min-width="120"></vxe-column>
+      </vxe-table>
+      </div>
     </el-dialog>
-  </div>
-
-  <!-- 临时权限展示区域 -->
-  <div class="permission-display" v-if="false">
-    <h4>当前权限设置</h4>
-    <!-- 使用专门的计算属性来展示权限数据 -->
-    <pre>{{ JSON.stringify(displayedPermissions, null, 2) }}</pre>
   </div>
 
 
 </template>
 <script setup lang="ts">
 import { useRouter, useRoute } from "vue-router";
-import { ref, reactive, onMounted, computed, watch } from "vue";
+import { ref, reactive, onMounted, computed, watch, shallowRef } from "vue";
 // 修改导入路径为相对路径
 import PermissionSettingPanel from "../components/PermissionSettingPanel.vue";
 import { useTaskStore, saveState } from "../stores/task";
 import TaskInfo from "../components/TaskInfo.vue";
-import SparkMD5 from "spark-md5";
 import { ElMessage } from "element-plus";
 // 导入API
 import { saveTaskSettings, getTaskData } from "../api/task";
@@ -102,84 +101,47 @@ const store = useTaskStore();
 
 // 从路由query获取taskId
 const taskId = computed(() => route.query.taskId as string);
-// 从store获取当前任务数据（改为ref以便响应式更新）
-const currentTask = ref(null);
 
-// 监听store.tasks的变化，确保currentTask能够响应progress的更新
-watch(
-  () => store.tasks,
-  () => {
-    if (!taskId.value) {
-      currentTask.value = null;
-      return;
-    }
-    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
-  },
-  { deep: true, immediate: true }
-);
-
-// 监听taskId的变化，确保切换任务时能正确获取当前任务
-watch(
-  () => taskId.value,
-  () => {
-    if (!taskId.value) {
-      currentTask.value = null;
-      return;
-    }
-    currentTask.value = store.tasks.find(task => task.taskId === taskId.value);
-  },
-  { immediate: true }
-);
-const fileName = computed(() => currentTask.value?.fileName || '');
-const split = computed(() => currentTask.value?.split || false);
-const header = computed(() => currentTask.value?.header || '');
-const splitData = computed(() => currentTask.value?.splitData || []);
-
-// 专门用于权限展示的计算属性，添加详细日志
-const displayedPermissions = computed(() => {
-  // 直接通过taskId查找任务，不依赖store.currentTask getter
-  const task = store.tasks.find(t => t.taskId === taskId.value);
-
-  // 如果找到任务且有权限，使用该权限
-  if (task) {
-    // 确保任务有完整的权限结构
-    if (!task.permissions) {
-      task.permissions = getDefaultPermissions();
-    }
-
-    // 确保权限结构完整
-    if (!task.permissions.row) {
-      task.permissions.row = { addable: false, deletable: false, sortable: false };
-    }
-    if (!task.permissions.columns) {
-      task.permissions.columns = [];
-    }
-
-    return task.permissions;
-  }
-
-  // 如果没有找到任务，返回默认权限
-  return getDefaultPermissions();
-});
+// 本地变量存储当前任务数据
+let currentTaskData = null;
 
 // 拆分表格相关数据
-const splitTables = ref([]);
+const splitTables = shallowRef([]);
 const dialogVisible = ref(false);
-const currentTable = ref({});
+const currentTable = shallowRef({});
 
-// 任务表单数据
+// 任务表单数据 - 直接存储在本地，仅在点击按钮时保存到store
 const taskForm = reactive({
   taskName: '',
   taskDeadline: null,
   formDescription: ''
 });
 
+// 监听taskId变化，初始化任务数据
+watch(
+  () => taskId.value,
+  () => {
+    if (taskId.value) {
+      const task = store.tasks.find(t => t.taskId === taskId.value);
+      if (task) {
+        currentTaskData = task;
+        
+        // 初始化表单数据
+        taskForm.taskName = task.taskName || '';
+        taskForm.taskDeadline = task.taskDeadline || null;
+        taskForm.formDescription = task.formDescription || '';
+      }
+    }
+  },
+  { immediate: true }
+);
+
 // 日期禁用规则：从第二天开始，最长3周
 const disabledDate = (time: Date) => {
   // 计算今天和3周后的日期
   const today = new Date();
   const nextDay = new Date(today);
-  nextDay.setDate(today.getDate() + 1); // 从第二天开始
+  nextDay.setDate(today.getDate()); // 从当天开始
   nextDay.setHours(0, 0, 0, 0);
 
   const maxDate = new Date(today);
@@ -213,41 +175,39 @@ const validateTaskInfo = () => {
 
 
 
-// 获取拆分表格数据
-const fetchSplitTables = async () => {
+// 获取拆分表格数据 - 优化版：减少不必要的数据转换和数组操作
+const fetchSplitTables = () => {
   try {
-    // 确保currentTask存在
-    if (!currentTask.value) {
+    // 确保currentTaskData存在
+    if (!currentTaskData) {
       splitTables.value = [];
       return;
     }
 
     // 不拆分的情况：直接使用完整数据作为一个表格
-    if (!split.value) {
-      const headers = currentTask.value.uploadedHeaders;
-      const data = currentTask.value.uploadedData;
+    if (!currentTaskData.splitEnabled) {
+      const headers = currentTaskData.uploadedHeaders;
+      const data = currentTaskData.uploadedData;
 
       if (headers.length > 0 && data.length > 0) {
-        // 将二维数组转换为对象数组
-        const formattedData = data.map(row => {
+        // 将二维数组转换为对象数组，以便vxe-table正确显示
+        const objectData = data.map(row => {
           const obj = {};
-          headers.forEach((hd, idx) => {
-            obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+          headers.forEach((header, index) => {
+            obj[header] = row[index];
           });
           return obj;
         });
 
-        // 不拆分时：默认显示所有列
-        const columnsToShow = headers;
-
         splitTables.value = [{
-          name: fileName.value || "未命名表格",
+          name: currentTaskData.fileName || "未命名表格",
           rowCount: data.length,
-          data: formattedData,
-          columns: columnsToShow.map(header => ({
-            prop: header,
-            label: header,
-            width: 120
+          data: objectData,
+          // 只生成必要的列配置
+          columns: headers.map(header => ({
+            field: header, // 使用field而不是prop，更适合vxe-table
+            title: header,
+            minWidth: 120
           }))
         }];
       } else {
@@ -257,39 +217,40 @@ const fetchSplitTables = async () => {
     }
 
     // 拆分的情况：使用拆分后的数据
-    if (!header.value) {
+    if (!currentTaskData.selectedHeader) {
       splitTables.value = [];
       return;
     }
 
     // 从currentTask获取真实的拆分数据
-    if (splitData.value && splitData.value.length > 0) {
-      splitTables.value = splitData.value.map(item => {
+    if (currentTaskData.splitData && currentTaskData.splitData.length > 0) {
+      // 将二维数组转换为对象数组，以便vxe-table正确显示
+      splitTables.value = currentTaskData.splitData.map(item => {
+        const headers = item.headers;
+        const data = item.data;
+        
         // 将二维数组转换为对象数组
-        const formattedData = item.data.map(row => {
+        const objectData = data.map(row => {
           const obj = {};
-          item.headers.forEach((hd, idx) => {
-            obj[hd] = row[idx] !== undefined && row[idx] !== null ? row[idx] : "";
+          headers.forEach((header, index) => {
+            obj[header] = row[index];
           });
           return obj;
         });
-
-        // 查看表格时始终显示所有列，无论是否拆分
-        const columnsToShow = item.headers;
-
+        
         return {
           name: item.sheetName,
-          rowCount: item.data.length,
-          data: formattedData,
-          columns: columnsToShow.map(colHeader => ({
-            prop: colHeader, // 使用实际的表头名称作为prop
-            label: colHeader,
-            width: 120
+          rowCount: data.length,
+          data: objectData,
+          // 只生成必要的列配置
+          columns: headers.map(colHeader => ({
+            field: colHeader,
+            title: colHeader,
+            minWidth: 120
           }))
         };
       });
     } else {
-      // 如果没有拆分数据，则初始化为空数组
       splitTables.value = [];
     }
   } catch (error) {
@@ -308,7 +269,7 @@ const viewTable = (table) => {
 const goToTaskGeneration = async () => {
   try {
     // 检查当前任务状态是否为condition
-    if (currentTask.value?.progress !== 'condition') {
+    if (currentTaskData?.progress !== 'condition') {
       // 不强行修改条件，直接跳转到对应页面，由目标页面的逻辑处理
       router.push({
         path: "/task-generation",
@@ -318,13 +279,15 @@ const goToTaskGeneration = async () => {
     }
 
     // 如果当前是从release环节返回，获取最新任务数据并更新Pinia store
-    if (currentTask.value?.progress === 'release') {
+    if (currentTaskData?.progress === 'release') {
       const taskData = await getTaskData(taskId.value);
       store.setUploadedData(taskId.value, taskData.uploadedHeaders, taskData.uploadedData);
       store.setSplitInfo(taskId.value, taskData.splitEnabled, taskData.selectedHeader);
       // 更新其他必要的任务信息
       if (taskData.taskName) store.setTaskName(taskId.value, taskData.taskName);
       if (taskData.taskDeadline) store.setTaskDeadline(taskId.value, taskData.taskDeadline);
+      // 更新本地任务数据
+      currentTaskData = taskData;
     }
 
     // 重置进度为任务生成页面（只有在当前状态是condition时才执行）
@@ -342,6 +305,23 @@ const goToTaskGeneration = async () => {
 
 const goHome = () => router.push({ path: "/" });
 
+// 暂存设置处理函数
+const saveTemporarySettings = async () => {
+  try {
+    // 保存当前任务表单数据到store
+    store.setTaskName(taskId.value, taskForm.taskName);
+    store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
+    store.setFormDescription(taskId.value, taskForm.formDescription);
+    
+    // 手动保存状态到本地存储
+    await saveState(store.$state);
+    ElMessage.success("设置已暂存");
+  } catch (error) {
+    console.error("暂存设置失败:", error);
+    ElMessage.error("暂存设置失败，请稍后重试");
+  }
+};
+
 const saveSettingsAndRelease = async () => {
   // 验证任务信息
   if (!validateTaskInfo()) {
@@ -349,46 +329,29 @@ const saveSettingsAndRelease = async () => {
   }
 
   try {
-    // 生成表格随机编码
-    const generateTableCode = (table, index) => {
-      const dateStr = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/[T:]/g, "");
-      const tableIdentifier = table.name || `table_${index}`;
-      const metaStr = `${dateStr}:${taskId.value}:${tableIdentifier}`;
-      return SparkMD5.hash(metaStr).slice(0, 28);
-    };
 
-    // 为所有表格生成随机编码并保存到store
-    const tableCodes = splitTables.value.map((table, index) => generateTableCode(table, index));
-    // 保存到store时保留完整信息，方便前端使用
-    const tableLinks = splitTables.value.map((table, index) => ({
-      name: table.name,
-      code: tableCodes[index]
-    }));
-    store.setTableLinks(taskId.value, tableLinks);
     // 将任务名称和截止日期保存到store
     store.setTaskName(taskId.value, taskForm.taskName);
     store.setTaskDeadline(taskId.value, taskForm.taskDeadline);
 
     // 更新本地store的splitData
     let updatedSplitData = [];
-    if (!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0) {
+    if (!currentTaskData?.splitEnabled && currentTaskData?.uploadedData?.length > 0) {
       // 未拆分的情况：使用完整数据作为一个表格
       updatedSplitData = [{
-        sheetName: currentTask.value.fileName || '未拆分表格',
-        data: currentTask.value.uploadedData,
-        headers: currentTask.value.uploadedHeaders
+        sheetName: currentTaskData.fileName || '未拆分表格',
+        data: currentTaskData.uploadedData,
+        headers: currentTaskData.uploadedHeaders
       }];
-    } else if (currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0) {
+    } else if (currentTaskData?.splitEnabled && currentTaskData?.splitData?.length > 0) {
       // 已拆分的情况：使用现有的splitData
-      updatedSplitData = currentTask.value.splitData;
+      updatedSplitData = currentTaskData.splitData;
     }
     // 更新store中的splitData
     if (updatedSplitData.length > 0) {
       const task = store.tasks.find(task => task.taskId === taskId.value);
       if (task) {
         task.splitData = updatedSplitData;
-        // 手动保存状态到本地存储
-        saveState(store.$state);
       }
     }
 
@@ -396,9 +359,9 @@ const saveSettingsAndRelease = async () => {
     store.setProgress(taskId.value, 'release');
 
     // 检查并清理不可编辑列的权限
-    if (currentTask.value?.permissions?.columns) {
+    if (currentTaskData?.permissions?.columns) {
       // 深拷贝columns数组，避免直接修改store
-      const cleanedColumns = [...currentTask.value.permissions.columns];
+      const cleanedColumns = [...currentTaskData.permissions.columns];
 
       // 遍历所有列，清理不可编辑列的权限
       cleanedColumns.forEach(column => {
@@ -408,57 +371,89 @@ const saveSettingsAndRelease = async () => {
       });
 
       // 更新store中的权限数据
-      currentTask.value.permissions.columns = cleanedColumns;
-      // 保存到本地存储
-      saveState(store.$state);
+      const task = store.tasks.find(task => task.taskId === taskId.value);
+      if (task) {
+        task.permissions.columns = cleanedColumns;
+      }
     }
+
+    // 从store获取生成好的tableLinks
+    const taskFromStore = store.tasks.find(t => t.taskId === taskId.value);
+    let tableLinks = taskFromStore ? taskFromStore.tableLinks : [];
+    
+    // 确保每个tableLink都有正确的taskName（使用当前任务表单中的任务名称）
+    tableLinks = tableLinks.map(link => ({
+      ...link,
+      taskName: taskForm.taskName
+    }));
 
     // 准备发送到服务端的数据
     const taskData = {
       // 任务基本信息
       taskId: taskId.value,
-      fileName: fileName.value,
+      fileName: currentTaskData?.fileName || '',
       taskName: taskForm.taskName,
       taskDeadline: taskForm.taskDeadline,
       formDescription: taskForm.formDescription,
-      updateTime: currentTask.value?.updateTime || new Date().toISOString(),
+      updateTime: currentTaskData?.updateTime || new Date().toISOString(),
 
       // 上传的数据
-      uploadedHeaders: currentTask.value?.uploadedHeaders || [],
-      uploadedData: currentTask.value?.uploadedData || [],
+      uploadedHeaders: currentTaskData?.uploadedHeaders || [],
+      uploadedData: currentTaskData?.uploadedData || [],
 
       // 拆分相关信息
-      splitEnabled: currentTask.value?.splitEnabled || false,
-      selectedHeader: currentTask.value?.selectedHeader || '',
-      split: split.value,
-      header: header.value,
+      splitEnabled: currentTaskData?.splitEnabled || false,
+      selectedHeader: currentTaskData?.selectedHeader || '',
 
       // 确保未拆分的表格也有splitData数据
-      ...(!currentTask.value?.splitEnabled && currentTask.value?.uploadedData?.length > 0 && {
+      ...(!currentTaskData?.splitEnabled && currentTaskData?.uploadedData?.length > 0 && {
         splitData: [{
-          sheetName: currentTask.value.fileName || '未拆分表格',
-          data: currentTask.value.uploadedData,
-          headers: currentTask.value.uploadedHeaders
+          sheetName: currentTaskData.fileName || '未拆分表格',
+          data: currentTaskData.uploadedData,
+          headers: currentTaskData.uploadedHeaders
         }]
       }),
       // 拆分后的表格数据（如果已经有拆分数据，会覆盖上面的默认值）
-      ...(currentTask.value?.splitEnabled && currentTask.value?.splitData?.length > 0 && {
-        splitData: currentTask.value.splitData
+      ...(currentTaskData?.splitEnabled && currentTaskData?.splitData?.length > 0 && {
+        splitData: currentTaskData.splitData
       }),
 
       // 生成的表格链接（发送包含code和name的对象数组，以便后端创建table_fillings记录）
       tableLinks: tableLinks,
 
-      // 权限设置
-      permissions: currentTask.value?.permissions || { row: {}, columns: [] },
-
-      // 面板折叠状态
-      permissionPanelCollapsed: currentTask.value?.permissionPanelCollapsed || false,
+      // 权限设置：从store获取最新的权限数据
+      permissions: taskFromStore?.permissions || { row: {}, columns: [] },
 
       // 处理进度状态 - 发送到服务端时设置为release
       progress: 'release'
     };
 
+    // 先将taskData的内容更新到本地store
+    // 查找当前任务
+    const currentTask = store.tasks.find(t => t.taskId === taskId.value);
+    if (currentTask) {
+      // 更新任务基本信息
+      currentTask.taskName = taskForm.taskName;
+      currentTask.taskDeadline = taskForm.taskDeadline;
+      currentTask.formDescription = taskForm.formDescription;
+      currentTask.updateTime = taskData.updateTime;
+      currentTask.tableLinks = tableLinks;
+      currentTask.progress = 'release';
+      
+      // 更新拆分数据
+      if (taskData.splitData) {
+        currentTask.splitData = taskData.splitData;
+      }
+      
+      // 更新权限数据（如果有）
+      if (taskData.permissions) {
+        currentTask.permissions = taskData.permissions;
+      }
+    }
+
+    // 保存更新后的状态到本地存储
+    await saveState(store.$state);
+    
     // 调用API保存设置到服务端
     await saveTaskSettings(taskData);
 
@@ -508,46 +503,7 @@ onMounted(() => {
 // 且每次进入condition页面都会重新调用fetchSplitTables()，所以这个监听可能是多余的
 // 已保留注释作为参考
 
-// 监听路由参数变化，手动修改URL时更新页面
-watch(
-  () => route.query,
-  (newQuery) => {
-    // 当路由参数变化时，重新初始化数据
-    // 路由参数与store的一致性已由TaskInfo组件检查
-    fetchSplitTables();
-  },
-  { deep: true }
-);
 
-// 监听任务名称变化，实时保存到store
-watch(
-  () => taskForm.taskName,
-  (newName) => {
-    if (taskId.value) {
-      store.setTaskName(taskId.value, newName);
-    }
-  }
-);
-
-// 监听任务截止日期变化，实时保存到store
-watch(
-  () => taskForm.taskDeadline,
-  (newDeadline) => {
-    if (taskId.value) {
-      store.setTaskDeadline(taskId.value, newDeadline);
-    }
-  }
-);
-
-// 监听填表说明变化，实时保存到store
-watch(
-  () => taskForm.formDescription,
-  (newDescription) => {
-    if (taskId.value) {
-      store.setFormDescription(taskId.value, newDescription);
-    }
-  }
-);
 </script>
 
 <style scoped lang="less">

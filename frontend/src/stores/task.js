@@ -1,40 +1,34 @@
 import { defineStore } from 'pinia'
+import localforage from 'localforage'
 
 // 状态持久化相关常量
 const STORAGE_KEY = 'online-excel-task'
-const MAX_LOCAL_STORAGE_SIZE = 4 * 1024 * 1024 // 4MB，与文件上传限制保持一致
 
-// 检查localStorage是否有足够空间
-const hasEnoughStorage = (data) => {
-  try {
-    const dataSize = new Blob([JSON.stringify(data)]).size
-    // 预留10%的空间用于其他数据
-    return dataSize < MAX_LOCAL_STORAGE_SIZE * 0.9
-  } catch (error) {
-    console.error('Storage size check failed:', error)
-    return false
-  }
-}
+// 配置localforage
+localforage.config({
+  name: 'OnlineExcel',
+  storeName: 'taskStore',
+  description: '存储OnlineExcel应用的任务数据'
+})
 
 // 从本地存储加载状态
-const loadState = () => {
+const loadState = async () => {
   try {
-    const savedState = localStorage.getItem(STORAGE_KEY)
+    const savedState = await localforage.getItem(STORAGE_KEY)
     if (savedState) {
-      const parsedState = JSON.parse(savedState)
       // 如果是旧格式（单任务），转换为新格式（多任务）
-      if (parsedState.taskId && !parsedState.tasks) {
+      if (savedState.taskId && !savedState.tasks) {
         // 确保单个任务有完整的permissions对象
-        if (!parsedState.permissions) {
-          parsedState.permissions = getDefaultPermissions()
+        if (!savedState.permissions) {
+          savedState.permissions = getDefaultPermissions()
         }
         return {
-          tasks: [parsedState]
+          tasks: [savedState]
         }
       }
       // 确保所有任务都有完整的permissions对象
-      if (parsedState.tasks) {
-        parsedState.tasks = parsedState.tasks.map(task => {
+      if (savedState.tasks) {
+        savedState.tasks = savedState.tasks.map(task => {
           if (!task.permissions) {
             task.permissions = getDefaultPermissions()
           }
@@ -42,50 +36,64 @@ const loadState = () => {
         })
       }
       // 移除旧的currentTaskId字段
-      if (parsedState.currentTaskId) {
-        delete parsedState.currentTaskId
+      if (savedState.currentTaskId) {
+        delete savedState.currentTaskId
       }
-      return parsedState
+      return savedState
     }
     return null
   } catch (error) {
-    console.error('Failed to load state from localStorage:', error)
+    console.error('Failed to load state from IndexedDB:', error)
     return null
   }
 }
 
-// 保存状态到本地存储
-export const saveState = (state) => {
+// 保存状态到本地存储 - 优化版：减少不必要的深拷贝
+export const saveState = async (state) => {
   try {
+    // 只保存必要的任务数据，移除临时或不必要的字段
     const stateToSave = {
-      tasks: state.tasks
-    }
+      tasks: state.tasks.map(task => {
+        // 浅拷贝任务对象，避免修改原始数据
+        const savedTask = { ...task };
+        
+        // 移除可能导致序列化问题或占用大量空间的字段
+        // 如果有临时数据字段，可以在这里移除
+        
+        return savedTask;
+      })
+    };
     
-    // 检查存储空间
-    if (!hasEnoughStorage(stateToSave)) {
-      console.warn('LocalStorage space exceeded, state not saved')
-      return false
-    }
-    
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave))
-    return true
+    await localforage.setItem(STORAGE_KEY, stateToSave);
+    return true;
   } catch (error) {
-    console.error('Failed to save state to localStorage:', error)
-    return false
+    // 如果发生DataCloneError，再尝试深拷贝
+    if (error.name === 'DataCloneError') {
+      try {
+        const stateToSave = {
+          tasks: JSON.parse(JSON.stringify(state.tasks))
+        };
+        await localforage.setItem(STORAGE_KEY, stateToSave);
+        return true;
+      } catch (retryError) {
+        console.error('Failed to save state to IndexedDB (even with serialization):', retryError);
+        return false;
+      }
+    }
+    console.error('Failed to save state to IndexedDB:', error);
+    return false;
   }
 }
 
 import { permissionDict, applyPermissionsToTable, getDefaultPermissions } from '../hooks/tablePermission';
 
 export const useTaskStore = defineStore('task', {
-  state: () => {
-    // 从本地存储加载状态，如果没有则使用默认状态
-    const savedState = loadState()
-    return savedState || {
-      // 任务列表，每个任务包含完整的任务数据结构
-      tasks: []
-    }
-  },
+  state: () => ({
+    // 任务列表，每个任务包含完整的任务数据结构
+    tasks: [],
+    // 初始化标志
+    isInitialized: false
+  }),
   
   getters: {
     // 获取所有历史任务
@@ -93,6 +101,14 @@ export const useTaskStore = defineStore('task', {
   },
   
   actions: {
+    async initStore() {
+      const savedState = await loadState()
+      if (savedState) {
+        this.$patch(savedState)
+      }
+      // 设置初始化完成标志
+      this.isInitialized = true
+    },
     // 创建新任务
 createTask(taskId, fileName) {
   // 检查是否已存在相同ID的任务
@@ -135,16 +151,13 @@ createTask(taskId, fileName) {
       // 权限设置
       permissions: getDefaultPermissions(),
       
-      // 面板折叠状态
-      permissionPanelCollapsed: false,
+
       
       // 处理进度状态
       progress: 'generation'
     }
     this.tasks.push(newTask)
   }
-  // 保存状态到本地存储
-  saveState(this.$state)
 },
     
 
@@ -160,8 +173,6 @@ createTask(taskId, fileName) {
       if (task) {
         task.uploadedHeaders = headers
         task.uploadedData = data
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -171,8 +182,6 @@ createTask(taskId, fileName) {
       if (task) {
         task.uploadedHeaders = []
         task.uploadedData = []
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -189,9 +198,6 @@ createTask(taskId, fileName) {
           task.header = ''
           task.splitData = []
         }
-        
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -223,8 +229,6 @@ createTask(taskId, fileName) {
       
       task.split = true
       task.header = task.selectedHeader
-      // 保存状态到本地存储
-      saveState(this.$state)
     },
     
     // 设置列权限
@@ -236,8 +240,6 @@ createTask(taskId, fileName) {
           task.permissions = getDefaultPermissions()
         }
         task.permissions.columns = columns
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -246,8 +248,6 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.permissions = permissions
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -260,8 +260,6 @@ createTask(taskId, fileName) {
           task.permissions = getDefaultPermissions()
         }
         task.permissions.row = rowPermissions
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -279,8 +277,6 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.tableLinks = links
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -289,8 +285,6 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.taskName = taskName
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -299,8 +293,6 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.taskDeadline = taskDeadline
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -309,8 +301,6 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.formDescription = formDescription
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -319,8 +309,6 @@ createTask(taskId, fileName) {
       const task = this.tasks.find(task => task.taskId === taskId)
       if (task) {
         task.progress = progress
-        // 保存状态到本地存储
-        saveState(this.$state)
       }
     },
     
@@ -329,21 +317,19 @@ createTask(taskId, fileName) {
       const taskIndex = this.tasks.findIndex(task => task.taskId === taskId)
       if (taskIndex !== -1) {
         this.tasks.splice(taskIndex, 1)
-        // 保存状态到本地存储
-        saveState(this.$state)
         return true
       }
       return false
     },
     
     // 清除所有任务数据
-    clearAll() {
+    async clearAll() {
       this.tasks = []
       // 清除本地存储中的数据
       try {
-        localStorage.removeItem(STORAGE_KEY)
+        await localforage.removeItem(STORAGE_KEY)
       } catch (error) {
-        console.error('Failed to clear state from localStorage:', error)
+        console.error('Failed to clear state from IndexedDB:', error)
       }
     }
   }
