@@ -6,16 +6,16 @@
       <el-button type="primary" @click="goHome">返回首页</el-button>
     </div>
     <div v-else>
-      <component :is="headingLevel" class="task-title">{{ title }}</component>
+      <component :is="props.headingLevel" class="task-title">{{ title }}</component>
       <div class="meta">
-        <p v-if="currentTask.taskName"><strong>任务名称：</strong>{{ currentTask.taskName }}</p>
+        <p v-if="currentTask?.taskName"><strong>任务名称：</strong>{{ currentTask.taskName }}</p>
         <p style="margin-left:10px;">
           <strong>任务编号：</strong>
           <el-tooltip content="点击复制任务编号" placement="top">
-            <span class="copy-clickable" @click="copyTaskId(currentTask.taskId)">{{ currentTask.taskId }}</span>
+            <span class="copy-clickable" @click="copyTaskId(currentTask?.taskId)">{{ currentTask?.taskId }}</span>
           </el-tooltip>
         </p>
-        <p v-if="currentTask.fileName" style="margin-left: 10px;"><strong>文件名：</strong>{{ currentTask.fileName }}</p>
+        <p v-if="currentTask?.fileName" style="margin-left: 10px;"><strong>文件名：</strong>{{ currentTask.fileName }}</p>
         
       </div>
       <el-divider v-if="showDivider" />
@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from "vue";
+import { ref, watch, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { useTaskStore } from "../stores/task";
@@ -52,41 +52,40 @@ const route = useRoute();
 const router = useRouter();
 const store = useTaskStore();
 
-// 计算属性：标题级别
-const headingLevel = computed(() => props.headingLevel);
+// 本地变量存储当前任务
+const currentTask = ref(null);
 
-// 计算属性：获取当前任务
-const currentTask = computed(() => {
-  if (!route.query.taskId) return null;
-  return store.tasks.find(task => task.taskId === route.query.taskId);
-});
+// 检查任务有效性的函数
+const checkTaskValidity = () => {
+  const taskId = route.query.taskId;
+  if (!taskId) {
+    currentTask.value = null;
+    emit('task-validity-change', false);
+    return;
+  }
 
-// 计算属性：检查路由query和store是否一致
-const isTaskValid = computed(() => {
-  if (!route.query.taskId) return false;
-  
-  // 检查本地store中是否存在该taskId的任务
-  const taskExists = store.tasks.some(task => task.taskId === route.query.taskId);
-  return taskExists;
-});
+  // 查找任务
+  const task = store.tasks.find(t => t.taskId === taskId);
+  currentTask.value = task;
+  const isTaskValid = !!task;
+  emit('task-validity-change', isTaskValid);
 
-// 监听路由变化，通知父组件任务有效性变化
-watch(
-  () => [route.query.taskId, store.tasks],
-  () => {
-    emit('task-validity-change', isTaskValid.value);
-  },
-  { deep: true }
-);
-
-// 组件挂载时初始化任务有效性状态
-onMounted(() => {
-  emit('task-validity-change', isTaskValid.value);
   // 如果任务无效且在condition或generation页面，跳转到error页面
-  if (!isTaskValid.value && (route.path === '/task-condition' || route.path === '/task-generation')) {
+  if (!isTaskValid && (route.path === '/task-condition' || route.path === '/task-generation')) {
     router.push('/error');
   }
-});
+};
+
+// 只监听taskId的变化，避免深度监听store.tasks
+watch(
+  () => route.query.taskId,
+  () => {
+    checkTaskValidity();
+  },
+  { immediate: true }
+);
+
+
 
 // 复制任务编号功能
 const copyTaskId = async (textToCopy: string) => {

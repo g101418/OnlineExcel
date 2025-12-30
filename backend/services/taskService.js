@@ -145,8 +145,8 @@ const saveTask = (taskData, callback) => {
       taskId, taskName, taskDeadline, fileName, uploadedHeaders, uploadedData, 
       selectedHeader, split, header, 
       splitData, permissions, tableLinks,
-      updateTime, splitEnabled, permissionPanelCollapsed, progress, formDescription
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      updateTime, splitEnabled, progress, formDescription
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const params = [
       taskId,
@@ -163,7 +163,7 @@ const saveTask = (taskData, callback) => {
       JSON.stringify(tableLinks),
       JSON.stringify(taskData.updateTime || new Date().toISOString()),
       taskData.splitEnabled || false,
-      taskData.permissionPanelCollapsed || false,
+
       taskData.progress || 'generation',
       formDescription
     ];
@@ -204,7 +204,7 @@ const saveTask = (taskData, callback) => {
 
           db.run(fillingSql, [
             tableLink.code,
-            tableLink.name,
+            tableLink.taskName || tableLink.name,
             taskId,
             JSON.stringify(tableData.data),
             JSON.stringify(tableData.data),

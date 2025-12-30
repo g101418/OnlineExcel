@@ -22,6 +22,30 @@
           <div v-if="uploading" style="margin-top: 12px">
             <el-progress :percentage="uploadProgress" />
           </div>
+          <!-- 表头设置选项 -->
+          <div class="options-section">
+            <el-divider>表格解析选项</el-divider>
+
+            <div class="option-item">
+              <el-form label-position="top" label-width="120px">
+                <el-form-item label="表头行范围">
+                  <div class="row-range">
+                    <el-input-number v-model="headerStartRowIndex" :min="1" :step="1" placeholder="起始行"
+                      style="width: 160px; margin-right: 10px;" />
+                    <span>至</span>
+                    <el-input-number v-model="headerEndRowIndex" :min="headerStartRowIndex" :step="1" placeholder="结束行"
+                      style="width: 160px; margin-left: 10px;" />
+                  </div>
+                  <div class="form-tip">注意：行号从1开始计数</div>
+                </el-form-item>
+
+                <el-form-item label="扩展合并单元格">
+                  <el-switch v-model="isHandingMergedCells" active-text="是" inactive-text="否" />
+                  <div class="form-tip">启用后，数据行中合并单元格的数据会扩展到所有单元格</div>
+                </el-form-item>
+              </el-form>
+            </div>
+          </div>
         </div>
         <template #footer>
           <span class="dialog-footer">
@@ -84,7 +108,7 @@
 
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { ref, onMounted, onActivated, computed, watch } from "vue";
+import { ref, onMounted, onActivated, computed, shallowRef, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import SparkMD5 from "spark-md5";
@@ -104,8 +128,26 @@ const selectedFile = ref<File | null>(null);
 const uploading = ref(false);
 const uploadProgress = ref(0);
 
+const headerStartRowIndex = ref(1);
+const headerEndRowIndex = ref(1);
+const isHandingMergedCells = ref(true);
+
+// 监听结束行变化，确保始终大于起始行
+watch(headerEndRowIndex, (newVal) => {
+  if (newVal <= headerStartRowIndex.value) {
+    headerEndRowIndex.value = headerStartRowIndex.value;
+  }
+});
+
+// 监听起始行变化，确保结束行始终大于起始行
+watch(headerStartRowIndex, (newVal) => {
+  if (headerEndRowIndex.value <= newVal) {
+    headerEndRowIndex.value = newVal;
+  }
+});
+
 // 历史表格信息
-const historicalTables = ref([]);
+const historicalTables = shallowRef([]);
 const hasHistoricalData = computed(() => historicalTables.value.length > 0);
 
 // 根据任务ID获取任务链接
@@ -255,7 +297,10 @@ const deleteHistoricalTask = async (taskId) => {
     const success = await deleteSingleTask(taskId);
     if (success) {
       ElMessage.success('任务已删除');
-      // 不需要手动调用loadHistoricalData，watch监听器会自动处理数据更新
+      // 保存更新后的状态到本地存储
+      await saveState(store.$state);
+
+      loadHistoricalData();
     } else {
       ElMessage.error('删除任务失败，请检查网络连接或稍后重试');
     }
@@ -282,7 +327,7 @@ const clearHistory = async () => {
     // 记录删除失败的任务数
     let failedCount = 0;
 
-    // 逐个删除任务
+    // 逐个删除任务，每个任务都会与服务器通信
     for (const task of allTasks) {
       const success = await deleteSingleTask(task.taskId);
       if (!success) {
@@ -290,10 +335,13 @@ const clearHistory = async () => {
       }
     }
 
+    await saveState(store.$state);
+
     if (failedCount > 0) {
       ElMessage.error(`部分任务删除失败（${failedCount}个），请检查网络连接或稍后重试`);
     } else {
       ElMessage.success('历史记录已清除');
+      setTimeout(() => window.location.reload(), 700);
     }
   } catch (error) {
     // 用户取消清除
@@ -307,7 +355,7 @@ const clearHistory = async () => {
 const loadHistoricalData = async (deleteNonExistent = true) => {
   // 清空当前历史记录
   historicalTables.value = [];
-
+  let tmpHistoricalTables = [];
   // 遍历store中的所有任务
   for (const task of store.tasks) {
     // 计算数据大小
@@ -329,22 +377,25 @@ const loadHistoricalData = async (deleteNonExistent = true) => {
         // 调用API检查任务是否存在
         await checkIdExists(task.taskId);
         // 任务存在，添加到历史记录列表
-        historicalTables.value.push(historicalItem);
+        tmpHistoricalTables.push(historicalItem);
       } catch (error) {
         // 任务不存在且允许删除，从本地删除
         if (deleteNonExistent) {
           console.log(`任务 ${task.taskId} 不存在，从本地删除`);
           store.deleteTask(task.taskId);
+          // 保存更新后的状态到本地存储
+          await saveState(store.$state);
         } else {
           // 不允许删除时，仍然添加到历史记录列表
-          historicalTables.value.push(historicalItem);
+          tmpHistoricalTables.push(historicalItem);
         }
       }
     } else {
       // 非已发布任务，直接添加到历史记录列表
-      historicalTables.value.push(historicalItem);
+      tmpHistoricalTables.push(historicalItem);
     }
   }
+  historicalTables.value = tmpHistoricalTables;
 };
 
 // 页面加载时加载历史表格数据
@@ -356,15 +407,6 @@ onMounted(async () => {
 onActivated(async () => {
   await loadHistoricalData();
 });
-
-// 监听store.tasks的变化，当任务列表变化时重新加载历史数据
-watch(
-  () => store.tasks,
-  async () => {
-    await loadHistoricalData();
-  },
-  { deep: true }
-);
 
 const openUploadDialog = async () => {
   showUploadDialog.value = true;
@@ -386,10 +428,10 @@ const beforeUpload = (file) => {
     ElMessage.error("只支持 .xls / .xlsx / .csv / .et 格式的文件");
     return false;
   }
-  // max 1MB
-  const isLt1M = file.size / 1024 / 1024 < 1;
-  if (!isLt1M) {
-    ElMessage.error("文件不能超过 1MB");
+  // max 20MB
+  const isLt20M = file.size / 1024 / 1024 < 20;
+  if (!isLt20M) {
+    ElMessage.error("文件不能超过 20MB");
     return false;
   }
   return true;
@@ -400,6 +442,260 @@ const handleChange = (file, fileListArg) => {
   selectedFile.value = file.raw || file;
   fileList.value = fileListArg;
   // 选择文件时不立即解析，只在点击上传并继续时解析
+};
+
+/**
+   * 解析 Excel 文件以提取 vxe-table 的分组表头、扁平化表头和数据行。
+   * 支持多行表头及合并单元格。
+   * @param file 要解析的 Excel 文件。
+   * @param headerStartRowIndex 表头起始行的索引（从 0 开始）。
+   * @param headerEndRowIndex 表头结束行的索引（从 0 开始）。
+   * @param isHandingMergedCells 是否在数据行中展开合并单元格（默认为 true）。
+   * @returns [headers, flattenedHeaders, dataRows] 或在结构无效时抛出错误。
+   */
+const parseFile = async (
+  file: File,
+  headerStartRowIndex: number,
+  headerEndRowIndex: number,
+  isHandingMergedCells: boolean = true
+): Promise<[any[], string[], any[][]]> => {
+  // 将文件读取为 ArrayBuffer 并使用 XLSX 解析工作簿
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: "array" });
+  const workbookSheetNames = workbook.SheetNames;
+  if (workbookSheetNames.length === 0) {
+    throw new Error("表格文件为空，没有找到任何工作表");
+  }
+  const worksheet = workbook.Sheets[workbookSheetNames[0]];
+
+  // 将工作表转换为 JSON 行（header:1 保留原始结构）
+  const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  if (!rows || rows.length === 0) {
+    throw new Error("表格为空或无法解析，请检查文件内容");
+  }
+
+  // 计算工作表中的最大列数
+  let maxCols = 0;
+  if (worksheet["!ref"]) {
+    maxCols = XLSX.utils.decode_range(worksheet["!ref"]).e.c + 1;
+  } else {
+    rows.forEach((r) => (maxCols = Math.max(maxCols, r.length)));
+  }
+  if (maxCols === 0) {
+    throw new Error("表格为空或无法解析，请检查文件内容");
+  }
+
+  // 验证表头行范围
+  const numHeaderRows = headerEndRowIndex - headerStartRowIndex + 1;
+  if (
+    numHeaderRows <= 0 ||
+    headerStartRowIndex < 0 ||
+    headerEndRowIndex >= rows.length
+  ) {
+    throw new Error(
+      `表头行范围无效。请确保起始行小于等于结束行，且行号不超出表格范围（表格共有 ${rows.length} 行）`
+    );
+  }
+
+  // 从工作表中获取合并范围
+  const merges = worksheet["!merges"] || [];
+
+  // 辅助函数：查找包含 (r, c) 的合并范围
+  const findMerge = (r: number, c: number) => {
+    return merges.find(
+      (m) => r >= m.s.r && r <= m.e.r && c >= m.s.c && c <= m.e.c
+    );
+  };
+
+  // 辅助函数：获取 (r, c) 处的原始单元格值，去空格或返回空字符串
+  const getCellValue = (r: number, c: number) => {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = worksheet[addr];
+    return cell ? String(cell.v).trim() : "";
+  };
+
+  // 辅助函数：获取有效值（如果是合并单元格则进行扩展）
+  const getEffectiveValue = (r: number, c: number) => {
+    const merge = findMerge(r, c);
+    if (merge) {
+      return getCellValue(merge.s.r, merge.s.c);
+    }
+    return getCellValue(r, c);
+  };
+
+  // 构建用于 vxe-table 的分组表头
+  let headers: {
+    title: string;
+    children?: any[];
+    start: number;
+    width: number;
+  }[] = [];
+  let prevLevel: typeof headers = [];
+
+  // 遍历每一行表头
+  for (let row = headerStartRowIndex; row <= headerEndRowIndex; row++) {
+    let currentLevel: typeof headers = [];
+    let col = 0;
+    while (col < maxCols) {
+      const merge = findMerge(row, col);
+      let title = "";
+      let colspan = 1;
+      let rowspan = 1;
+      if (merge) {
+        if (merge.s.r === row && merge.s.c === col) {
+          // 这是合并单元格的起始位置
+          title = getCellValue(row, col);
+          colspan = merge.e.c - merge.s.c + 1;
+          rowspan = merge.e.r - merge.s.r + 1;
+        } else {
+          // 在合并单元格内部但不是起始位置 - 跳过（合并导致的“空”单元格）
+          col++;
+          continue;
+        }
+      } else {
+        // 普通单元格（未合并）
+        title = getCellValue(row, col);
+      }
+
+      // 检查表头中是否存在真正的空单元格：非合并单元格或合并起始单元格必须有值
+      // 这强制要求表头范围内不含空单元格（仅允许合并导致的占位空值）
+      if (!title) {
+        throw new Error(
+          `无效表头：在第 ${row + 1} 行，第 ${col + 1
+          } 列发现空单元格，且该单元格不属于任何合并区域。表头不应包含真正的空单元格。`
+        );
+      }
+
+      let colObj: {
+        title: string;
+        children?: any[];
+        start: number;
+        width: number;
+      } = { title, start: col, width: colspan };
+
+      // 如果不是纵向合并且当前不是最后一行表头，则初始化 children
+      if (rowspan === 1 && row < headerEndRowIndex) {
+        colObj.children = [];
+      }
+      currentLevel.push(colObj);
+      col += colspan;
+    }
+
+    if (row > headerStartRowIndex) {
+      // 将当前层级挂载到上一层级的 children 属性下
+      for (let p of prevLevel) {
+        if (p.children) {
+          p.children = currentLevel.filter(
+            (c) => c.start >= p.start && c.start < p.start + p.width
+          );
+        }
+      }
+      // 验证子节点的总宽度是否与父节点匹配
+      for (let p of prevLevel) {
+        if (p.children) {
+          const childSum = p.children.reduce(
+            (sum: number, ch: any) => sum + ch.width,
+            0
+          );
+          if (childSum !== p.width) {
+            throw new Error("无效表头结构：子节点与父节点不能构成树形结构");
+          }
+        }
+      }
+    } else {
+      headers = currentLevel;
+    }
+    prevLevel = currentLevel;
+  }
+
+  // 验证顶层节点是否覆盖了所有列
+  const topSum = headers.reduce((sum: number, h: any) => sum + h.width, 0);
+  if (topSum !== maxCols) {
+    throw new Error("无效表头结构：顶层节点未覆盖所有列");
+  }
+
+  // 清洗表头：移除内部使用的 start 和 width 属性
+  const cleanHeaders = (level: any[]): any[] => {
+    return level.map((h) => {
+      const cleaned: any = { title: h.title };
+      if (h.children && h.children.length > 0) {
+        cleaned["children"] = cleanHeaders(h.children);
+      }
+      return cleaned;
+    });
+  };
+  headers = cleanHeaders(headers);
+
+  // 为扁平化表头构建网格（展开合并单元格）
+  let headerGrid: string[][] = Array.from({ length: numHeaderRows }, () =>
+    Array(maxCols).fill("")
+  );
+  for (let ri = 0; ri < numHeaderRows; ri++) {
+    let row = headerStartRowIndex + ri;
+    for (let c = 0; c < maxCols; c++) {
+      headerGrid[ri][c] = getEffectiveValue(row, c);
+    }
+  }
+
+  // 按列的垂直路径构建扁平化表头
+  const flattenedHeaders: string[] = [];
+  for (let c = 0; c < maxCols; c++) {
+    let path: string[] = [];
+    let lastTitle = "";
+    for (let ri = 0; ri < numHeaderRows; ri++) {
+      let title = headerGrid[ri][c];
+      // 避免纵向合并产生的重复名称
+      if (title && title !== lastTitle) {
+        path.push(title);
+        lastTitle = title;
+      }
+    }
+    flattenedHeaders.push(path.join("-") || "");
+  }
+
+  // 检查扁平化表头是否有重复值
+  const headerSet = new Set<string>();
+  const duplicateHeaders = new Set<string>();
+  for (const header of flattenedHeaders) {
+    if (headerSet.has(header)) {
+      duplicateHeaders.add(header);
+    } else {
+      headerSet.add(header);
+    }
+  }
+
+  if (duplicateHeaders.size > 0) {
+    const duplicateList = Array.from(duplicateHeaders).join(", ");
+    throw new Error(
+      `无效表头：发现重复的表头名称 [${duplicateList}]。请确保所有表头列的组合路径都是唯一的。`
+    );
+  }
+
+  // 构建数据行，根据标识位处理合并单元格
+  const dataStartRow = headerEndRowIndex + 1;
+  const dataRows: any[][] = [];
+  for (let r = dataStartRow; r < rows.length; r++) {
+    const row: any[] = [];
+    for (let c = 0; c < maxCols; c++) {
+      let val;
+      if (isHandingMergedCells) {
+        // 填充合并单元格的值
+        val = getEffectiveValue(r, c);
+      } else {
+        // 获取原始值
+        val = getCellValue(r, c);
+      }
+      row.push(val);
+    }
+    dataRows.push(row);
+  }
+
+  // 校验：必须包含数据行
+  if (dataRows.length === 0) {
+    throw new Error("表格仅包含表头，请添加数据行。如确需上传，可手动增加“序号”列等并填写至少一行。");
+  }
+
+  return [headers, flattenedHeaders, dataRows];
 };
 
 const parseFileToStore = async (file: File) => {
@@ -468,14 +764,20 @@ const submitUpload = async () => {
     ElMessage.warning("请先选择一个表格文件");
     return;
   }
-  
+
   if (!beforeUpload(selectedFile.value)) {
+    return;
+  }
+
+  // 校验：结束行必须大于起始行
+  if (headerEndRowIndex.value < headerStartRowIndex.value) {
+    ElMessage.error("结束行必须大于起始行");
     return;
   }
 
   uploading.value = true;
   uploadProgress.value = 0;
-  
+
   // 模拟进度条
   const uploadInterval = setInterval(() => {
     if (uploadProgress.value < 90) {
@@ -484,7 +786,20 @@ const submitUpload = async () => {
   }, 200);
 
   try {
-    const { headers, dataRows } = await parseFileToStore(selectedFile.value as File);
+    // const { headers, dataRows } = await parseFileToStore(selectedFile.value as File);
+    const zeroBasedStartRow = headerStartRowIndex.value - 1;
+    const zeroBasedEndRow = headerEndRowIndex.value - 1;
+
+    const [_headers, flattenedHeaders, dataRows] = await parseFile(
+      selectedFile.value,
+      zeroBasedStartRow,
+      zeroBasedEndRow,
+      isHandingMergedCells.value
+    );
+
+    let headers = flattenedHeaders;
+
+    // console.log(flattenedHeaders, dataRows);
 
     // --- 校验逻辑开始 ---
 
@@ -517,7 +832,7 @@ const submitUpload = async () => {
       stopUpload(uploadInterval);
       return;
     }
-    
+
     // 校验4：表头重复校验 (原有逻辑优化)
     const headerSet = new Set();
     const duplicateHeaders: string[] = [];
@@ -535,26 +850,15 @@ const submitUpload = async () => {
       return;
     }
 
-    // 校验5：localStorage容量检查
-    const dataSize = calculateDataSize(headers, dataRows);
-    const estimatedSize = dataSize * 2; // 乘以3作为安全系数
-    
-    // 获取当前localStorage已使用的空间
-    let usedStorage = 0;
-    for (let key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
-        usedStorage += localStorage[key].length * 2; // 每个字符占用2字节
-      }
-    }    
-    
-    // 检查是否有足够的空间
-    const availableStorage = 4.5 * 1024 * 1024 - usedStorage; // 假设localStorage总容量为4.5MB
-    
-    if (estimatedSize > availableStorage) {
-      ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
-      stopUpload(uploadInterval);
-      return;
-    }
+    // // 校验5：localStorage容量检查
+    // const dataSize = calculateDataSize(headers, dataRows);
+    // const estimatedSize = dataSize * 2; // 乘以3作为安全系数
+
+    // if (estimatedSize > 30 * 1024 * 1024) {
+    //   ElMessage.error(`表格数据过大，本地存储空间不足，请删除无用任务后再试。`);
+    //   stopUpload(uploadInterval);
+    //   return;
+    // }
 
     // --- 校验逻辑结束 ---
 
@@ -569,7 +873,7 @@ const submitUpload = async () => {
     store.createTask(clientTaskId, selectedFile.value?.name || "");
     store.setUploadedData(clientTaskId, headers, dataRows);
 
-    const saveSuccess = saveState(store.$state);
+    const saveSuccess = await saveState(store.$state);
     if (!saveSuccess) {
       ElMessage.warning("数据保存空间不足，刷新页面可能导致数据丢失");
     }
@@ -583,7 +887,7 @@ const submitUpload = async () => {
 
   } catch (e) {
     console.error("文件处理失败:", e);
-    ElMessage.error("文件处理异常，请检查文件格式");
+    ElMessage.error(e.message);
     stopUpload(uploadInterval);
   }
 };
@@ -744,6 +1048,43 @@ const generateTaskId = (file: File) => {
 
   .task-id-input {
     width: 100%;
+  }
+}
+
+.options-section {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+
+  .option-item {
+    margin-bottom: 16px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  .row-range {
+    display: flex;
+    align-items: center;
+
+    span {
+      margin: 0 10px;
+      color: #606266;
+    }
+  }
+
+  .form-tip {
+    font-size: 14px; // 稍微调小一点通常更美观
+    color: #909399;
+    margin-left: 10px; // 调整为在输入框下方显示时的间距
+    line-height: 1.4;
+  }
+
+  // 修复el-divider文字背景色问题
+  :deep(.el-divider__text) {
+    background-color: #f5f7fa;
   }
 }
 

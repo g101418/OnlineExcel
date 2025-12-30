@@ -3,8 +3,16 @@ import 'winston-daily-rotate-file';
 import path from 'path';
 import fs from 'fs';
 
-// 确保日志目录存在
-const logDir = path.join(process.cwd(), 'logs');
+// ========== 核心：兼容本地/Docker的日志目录逻辑 ==========
+// 1. 区分环境（开发/生产）
+const isProduction = process.env.NODE_ENV === 'production';
+
+// 2. 日志目录：本地用 process.cwd()/logs，Docker用挂载的 logs_mount 目录
+const logDir = isProduction
+  ? (process.env.LOG_DIR || '/app/backend/logs_mount')  // Docker部署：挂载目录
+  : path.join(process.cwd(), 'logs');                   // 本地开发：保持你原有逻辑
+
+// 3. 确保日志目录存在（复用你原有代码逻辑）
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -60,40 +68,40 @@ const logger = {
       clientIp = request.ip;
       metadata.path = request.path;
       metadata.method = request.method;
-      
+
       // 移除req对象，避免日志过大
       if (metadata.req) delete metadata.req;
     }
-    
+
     // 在消息中添加IP地址
     if (clientIp) {
       message = `[${clientIp}] ${message}`;
     }
-    
+
     baseLogger[level](message, metadata);
   },
-  
+
   // 扩展各个日志级别方法
   info(message, metadata = {}, req = null) {
     this._log('info', message, metadata, req);
   },
-  
+
   warn(message, metadata = {}, req = null) {
     this._log('warn', message, metadata, req);
   },
-  
+
   error(message, metadata = {}, req = null) {
     this._log('error', message, metadata, req);
   },
-  
+
   debug(message, metadata = {}, req = null) {
     this._log('debug', message, metadata, req);
   },
-  
+
   verbose(message, metadata = {}, req = null) {
     this._log('verbose', message, metadata, req);
   },
-  
+
   // 保留原有的http方法
   http(message, req) {
     let clientIp = req?.ip || '';
@@ -106,12 +114,12 @@ const logger = {
       userAgent: req?.headers['user-agent']
     });
   },
-  
+
   // 暴露基础logger的level属性
   get level() {
     return baseLogger.level;
   },
-  
+
   set level(newLevel) {
     baseLogger.level = newLevel;
   }

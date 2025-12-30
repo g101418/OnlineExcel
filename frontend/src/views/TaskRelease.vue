@@ -10,7 +10,21 @@
       </div>
     </div>
 
-    <TaskInfo title="发布任务" />
+    <div class="task-info">
+      <h2 class="task-title"> 任务发布 </h2>
+      <div class="meta">
+        <p><strong>任务名称：</strong>{{ serverTaskData.taskName }}</p>
+        <p style="margin-left:10px;">
+          <strong>任务编号：</strong>
+          <el-tooltip content="点击复制任务编号" placement="top">
+            <span class="copy-clickable" @click="copyTaskId(serverTaskData.taskId)">{{ serverTaskData.taskId }}</span>
+          </el-tooltip>
+        </p>
+        <p v-if="serverTaskData.fileName" style="margin-left: 10px;"><strong>文件名：</strong>{{ serverTaskData.fileName }}</p>
+
+      </div>
+      <el-divider />
+    </div>
 
     <!-- 显示表格列表 -->
     <div v-if="isTaskValid && splitTables.length > 0" class="tables-container">
@@ -18,10 +32,11 @@
         <div class="title-container">
           <h3>填报子任务列表</h3>
           <div class="status-info" style="margin-left: 10px;">
-            <el-tag v-if="currentTask?.status === 'draft'" type="success">进行中</el-tag>
+            <el-tag v-if="serverTaskData.status === 'draft'" type="success">进行中</el-tag>
             <el-tag v-else type="danger">已超期</el-tag>
-            <span v-if="currentTask?.taskDeadline" class="deadline" style="margin-left: 10px;">截止时间: {{ formatDate(currentTask?.taskDeadline)
-              }}</span>
+            <span v-if="serverTaskData.taskDeadline" class="deadline" style="margin-left: 10px;">截止时间: {{
+              formatDate(serverTaskData.taskDeadline)
+            }}</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -202,11 +217,20 @@ const split = computed(() => currentTask.value?.split || false);
 const header = computed(() => currentTask.value?.header || '');
 const splitData = computed(() => currentTask.value?.splitData || []);
 
+// 从服务端获取的任务数据
+const serverTaskData = ref({
+  taskName: '',
+  taskId: '',
+  fileName: '',
+  taskDeadline: null,
+  status: 'draft'
+});
+
 // 任务有效性检查
 const isTaskValid = ref(true);
 
 // 拆分表格相关数据
-const splitTables = ref([]);
+const splitTables = shallowRef([]); // 改为响应式数据
 const loading = ref(true); // 初始设置为true，避免数据加载完成前按钮闪烁
 
 // 计算属性：为表格添加链接和状态（从服务端获取）
@@ -221,22 +245,22 @@ const hasSubmittedTables = computed(() => {
 
 // 表格数据查看相关变量
 const tableDataDialogVisible = ref(false);
-const tableData = ref(null);
+let tableData = null;
 const tableDataLoading = ref(false);
-const tableHeaders = ref([]);
+let tableHeaders = [];
 // 原始数据查看相关变量
 const originalDataDialogVisible = ref(false);
-const originalTableData = ref(null);
+let originalTableData = null;
 const originalDataLoading = ref(false);
 // 悬浮提示框相关变量
 const showNotification = ref(true);
 let notificationTimer = null;
 // 表格差异比较相关变量
-const localTableData = ref(null);
+let localTableData = null;
 const showDifferences = ref(false);
-const comparisonResults = ref([]);
-const currentViewingTable = ref(null);
-const currentOriginalViewingTable = ref(null);
+const comparisonResults = shallowRef([]);
+const currentViewingTable = shallowRef(null);
+const currentOriginalViewingTable = shallowRef(null);
 
 // 链接简写函数：简化显示的链接，保持复制使用完整链接
 const shortenLink = (code) => {
@@ -286,6 +310,38 @@ const copyLink = async (code) => {
       if (success) {
         ElMessage.success({
           message: "链接已成功复制到剪贴板！",
+          duration: 1000,
+        });
+      } else {
+        throw new Error("execCommand failed");
+      }
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
+};
+
+const copyTaskId = async (taskId) => {
+  if (!taskId) return;
+  try {
+    await navigator.clipboard.writeText(taskId);
+    ElMessage.success({
+      message: "任务编号已成功复制到剪贴板！",
+      duration: 1000,
+    });
+  } catch (err) {
+    // 兼容方案
+    const textarea = document.createElement("textarea");
+    textarea.value = taskId;
+    textarea.style.position = "fixed";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      const success = document.execCommand("copy");
+      if (success) {
+        ElMessage.success({
+          message: "任务编号已成功复制到剪贴板！",
           duration: 1000,
         });
       } else {
@@ -380,23 +436,28 @@ const viewTable = async (table) => {
   currentViewingTable.value = table; // 保存当前查看的表格
   try {
     const response = await getTableData(table.code);
-    // 将二维数组转换为对象数组，以便el-table正确渲染
-    const tableDataArray = response.table_data.map(row => {
-      const rowObj = {};
-      row.forEach((cell, index) => {
-        rowObj["col" + index] = cell;
+    // 使用Promise.resolve将数据转换放在微任务队列中，避免阻塞主线程
+    await Promise.resolve().then(() => {
+      // 将二维数组转换为对象数组，以便el-table正确渲染
+      const tableDataArray = response.table_data.map(row => {
+        const rowObj = {};
+        row.forEach((cell, index) => {
+          rowObj["col" + index] = cell;
+        });
+        return rowObj;
       });
-      return rowObj;
+      tableData = {
+        ...response,
+        table_data: tableDataArray
+      };
+      // 使用当前任务的uploadedHeaders作为表头
+      tableHeaders = currentTask.value?.uploadedHeaders || [];
     });
-    tableData.value = {
-      ...response,
-      table_data: tableDataArray
-    };
-    // 使用当前任务的uploadedHeaders作为表头
-    tableHeaders.value = currentTask.value?.uploadedHeaders || [];
 
     // 从本地存储获取对应的表格数据
-    getLocalTableData(table);
+    await Promise.resolve().then(() => {
+      getLocalTableData(table);
+    });
   } catch (error) {
     console.error("获取表格数据失败:", error);
     ElMessage.error("获取表格数据失败，请稍后重试");
@@ -406,7 +467,7 @@ const viewTable = async (table) => {
 };
 
 // 查看原始表格数据
-const viewOriginalTable = (table) => {
+const viewOriginalTable = async (table) => {
   originalDataLoading.value = true;
   originalDataDialogVisible.value = true;
   currentOriginalViewingTable.value = table; // 保存当前查看的原始表格
@@ -415,28 +476,31 @@ const viewOriginalTable = (table) => {
     if (currentTask.value && currentTask.value.splitData) {
       const originalTable = currentTask.value.splitData.find(item => item.sheetName === table.name);
       if (originalTable && originalTable.data) {
-        // 将二维数组转换为对象数组，以便el-table正确渲染
-        const originalTableDataArray = originalTable.data.map(row => {
-          const rowObj = {};
-          row.forEach((cell, index) => {
-            rowObj["col" + index] = cell;
+        // 使用Promise.resolve将数据转换放在微任务队列中，避免阻塞主线程
+        await Promise.resolve().then(() => {
+          // 将二维数组转换为对象数组，以便el-table正确渲染
+          const originalTableDataArray = originalTable.data.map(row => {
+            const rowObj = {};
+            row.forEach((cell, index) => {
+              rowObj["col" + index] = cell;
+            });
+            return rowObj;
           });
-          return rowObj;
+          originalTableData = originalTableDataArray;
+          // 使用当前任务的uploadedHeaders作为表头
+          tableHeaders = currentTask.value?.uploadedHeaders || [];
         });
-        originalTableData.value = originalTableDataArray;
-        // 使用当前任务的uploadedHeaders作为表头
-        tableHeaders.value = currentTask.value?.uploadedHeaders || [];
       } else {
-        originalTableData.value = [];
+        originalTableData = [];
         ElMessage.warning("未找到对应的原始表格数据");
       }
     } else {
-      originalTableData.value = [];
+      originalTableData = [];
       ElMessage.warning("当前任务没有原始表格数据");
     }
   } catch (error) {
     console.error("获取原始表格数据失败:", error);
-    originalTableData.value = [];
+    originalTableData = [];
     ElMessage.error("获取原始表格数据失败，请稍后重试");
   } finally {
     originalDataLoading.value = false;
@@ -458,23 +522,23 @@ const getLocalTableData = (table) => {
           });
           return rowObj;
         });
-        localTableData.value = localTableDataArray;
+        localTableData = localTableDataArray;
       } else {
-        localTableData.value = [];
+        localTableData = [];
         console.warn("未找到对应的原始表格数据");
       }
     } else {
-      localTableData.value = [];
+      localTableData = [];
       console.warn("当前任务没有splitData");
     }
   } catch (error) {
     console.error("获取原始表格数据失败:", error);
-    localTableData.value = [];
+    localTableData = [];
   }
 };
 
 // 比较表格差异
-const compareTable = () => {
+const compareTable = async () => {
   // 如果已经在比较状态，点击按钮则取消比较
   if (showDifferences.value) {
     showDifferences.value = false;
@@ -483,79 +547,87 @@ const compareTable = () => {
   }
 
   // 检查数据有效性
-  if (!tableData.value || !tableData.value.table_data || !Array.isArray(tableData.value.table_data)) {
+  if (!tableData || !tableData.table_data || !Array.isArray(tableData.table_data)) {
     ElMessage.warning("报送表格数据无效");
     return;
   }
 
-  if (!localTableData.value || !Array.isArray(localTableData.value) || localTableData.value.length === 0) {
+  if (!localTableData || !Array.isArray(localTableData) || localTableData.length === 0) {
     ElMessage.warning("原始表格数据无效");
     return;
   }
 
-  const submittedData = tableData.value.table_data; // 报送者修改后的数据
-  const originalData = localTableData.value; // 原始表格数据
+  const submittedData = tableData.table_data; // 报送者修改后的数据
+  const originalData = localTableData; // 原始表格数据
 
   // 重置比较结果
   comparisonResults.value = [];
 
-  // 比较每一行和每一列的数据
-  const minRows = Math.min(submittedData.length, originalData.length);
-  const maxCols = Object.keys(submittedData[0]).length
-  for (let rowIndex = 0; rowIndex < minRows; rowIndex++) {
-    const submittedRow = submittedData[rowIndex] || {};
-    const originalRow = originalData[rowIndex] || {};
+  // 使用Promise.resolve将数据比较放在微任务队列中，避免阻塞主线程
+  await Promise.resolve().then(() => {
+    // 比较每一行和每一列的数据
+    const minRows = Math.min(submittedData.length, originalData.length);
+    const maxCols = Object.keys(submittedData[0]).length;
+    const results = [];
 
-    const rowComparison = {
-      rowIndex,
-      differences: []
-    };
-
-    for (let colIndex = 0; colIndex < maxCols; colIndex++) {
-      const submittedCell = submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '';
-      const originalCell = originalRow[`col${colIndex}`] !== undefined ? originalRow[`col${colIndex}`] : '';
-
-      // 容错比较：去除首尾空格并转换为字符串
-      const submittedCellStr = String(submittedCell).trim();
-      const originalCellStr = String(originalCell).trim();
-
-      if (submittedCellStr !== originalCellStr) {
-        rowComparison.differences.push({
-          colIndex,
-          serverValue: submittedCell, // 报送的数据
-          localValue: originalCell    // 原始的数据
-        });
-      }
-    }
-
-    // 如果该行有差异，添加到比较结果
-    if (rowComparison.differences.length > 0) {
-      comparisonResults.value.push(rowComparison);
-    }
-  }
-
-  // 处理submittedData行数多于originalData的情况
-  if (submittedData.length > originalData.length) {
-    for (let rowIndex = originalData.length; rowIndex < submittedData.length; rowIndex++) {
+    for (let rowIndex = 0; rowIndex < minRows; rowIndex++) {
       const submittedRow = submittedData[rowIndex] || {};
+      const originalRow = originalData[rowIndex] || {};
+
       const rowComparison = {
         rowIndex,
         differences: []
       };
 
-      // 将该行的所有列都标记为差异
       for (let colIndex = 0; colIndex < maxCols; colIndex++) {
-        rowComparison.differences.push({
-          colIndex,
-          serverValue: submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '',
-          localValue: '' // 原始数据中没有该行
-        });
+        const submittedCell = submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '';
+        const originalCell = originalRow[`col${colIndex}`] !== undefined ? originalRow[`col${colIndex}`] : '';
+
+        // 容错比较：去除首尾空格并转换为字符串
+        const submittedCellStr = String(submittedCell).trim();
+        const originalCellStr = String(originalCell).trim();
+
+        if (submittedCellStr !== originalCellStr) {
+          rowComparison.differences.push({
+            colIndex,
+            serverValue: submittedCell, // 报送的数据
+            localValue: originalCell    // 原始的数据
+          });
+        }
       }
 
-      // 添加到比较结果
-      comparisonResults.value.push(rowComparison);
+      // 如果该行有差异，添加到比较结果
+      if (rowComparison.differences.length > 0) {
+        results.push(rowComparison);
+      }
     }
-  }
+
+    // 处理submittedData行数多于originalData的情况
+    if (submittedData.length > originalData.length) {
+      for (let rowIndex = originalData.length; rowIndex < submittedData.length; rowIndex++) {
+        const submittedRow = submittedData[rowIndex] || {};
+        const rowComparison = {
+          rowIndex,
+          differences: []
+        };
+
+        // 将该行的所有列都标记为差异
+        for (let colIndex = 0; colIndex < maxCols; colIndex++) {
+          rowComparison.differences.push({
+            colIndex,
+            serverValue: submittedRow[`col${colIndex}`] !== undefined ? submittedRow[`col${colIndex}`] : '',
+            localValue: '' // 原始数据中没有该行
+          });
+        }
+
+        // 添加到比较结果
+        results.push(rowComparison);
+      }
+    }
+
+    // 更新比较结果
+    comparisonResults.value = results;
+  });
 
   // 显示差异
   showDifferences.value = true;
@@ -834,8 +906,14 @@ const fetchSplitTables = async () => {
       return;
     }
 
-    // 调用API从服务端获取数据，使用query中的taskId
-    const response = await getTaskReleaseData(route.query.taskId as string);
+    const taskId = route.query.taskId as string;
+
+    // 并行调用API从服务端获取数据
+    const [response, subtaskStatuses, taskOverdueInfo] = await Promise.all([
+      getTaskReleaseData(taskId),
+      getSubTaskStatuses(taskId),
+      checkTaskOverdue(taskId)
+    ]);
 
     // 检查响应数据是否有效
     if (!response) {
@@ -843,6 +921,15 @@ const fetchSplitTables = async () => {
       router.push({ path: "/error", query: { message: "获取的数据格式无效" } });
       return;
     }
+
+    // 更新从服务端获取的任务数据
+    serverTaskData.value = {
+      taskName: response.taskName || '',
+      taskId: response.taskId || '',
+      fileName: response.fileName || '',
+      taskDeadline: response.taskDeadline || null,
+      status: response.status || 'draft'
+    };
 
     // 处理未拆分表格的情况：如果splitData为空，使用uploadedData创建一个单元素的splitData数组
     if (!response.splitData || response.splitData.length === 0) {
@@ -882,7 +969,7 @@ const fetchSplitTables = async () => {
       store.tasks[existingTaskIndex] = updatedTask;
 
       // 手动保存状态到本地存储
-      saveState(store.$state);
+      await saveState(store.$state);
     } else {
       // 如果任务不存在，创建新任务
       store.createTask(response.taskId, response.fileName);
@@ -897,7 +984,7 @@ const fetchSplitTables = async () => {
         };
 
         // 手动保存状态到本地存储
-        saveState(store.$state);
+        await saveState(store.$state);
       }
     }
 
@@ -924,9 +1011,6 @@ const fetchSplitTables = async () => {
       };
     });
 
-    // 获取最新的子任务状态
-    const subtaskStatuses = await getSubTaskStatuses(route.query.taskId as string);
-
     // 更新表格状态
     if (subtaskStatuses && subtaskStatuses.length > 0) {
       splitTables.value.forEach(table => {
@@ -949,10 +1033,6 @@ const fetchSplitTables = async () => {
       });
     }
 
-    // 查询子任务的豁免情况
-    const taskOverdueInfo = await checkTaskOverdue(route.query.taskId as string);
-
-
     // 获取子任务豁免信息数组
     let overdueStatus = [];
     if (taskOverdueInfo && Array.isArray(taskOverdueInfo)) {
@@ -968,12 +1048,9 @@ const fetchSplitTables = async () => {
       splitTables.value.forEach(table => {
         const overdueInfo = overdueStatus.find(item => item.filling_task_id === table.code);
         if (overdueInfo) {
-
-
           // 正确转换overdue_permission为布尔值
           // 处理数值型（1/0）和布尔型
           table.overduePermission = Boolean(Number(overdueInfo.overdue_permission));
-
         } else {
           // 默认设置为未豁免
           table.overduePermission = false;
@@ -1128,6 +1205,48 @@ onUnmounted(() => {
 .notification-icon {
   color: #52c41a;
   font-size: 18px;
+}
+
+.task-info {
+  .task-title {
+    margin-bottom: 16px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    margin-bottom: 16px;
+
+    p {
+      margin: 0;
+      font-size: 14px;
+
+      .copy-clickable {
+        cursor: pointer;
+        color: #409eff;
+
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+  }
+
+  .no-data {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 20px 0;
+
+    p {
+      font-size: 16px;
+      color: #606266;
+    }
+  }
 }
 
 /* 动画效果 */

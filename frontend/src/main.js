@@ -15,6 +15,9 @@ import 'vxe-pc-ui/es/style.css'
 import VxeUITable from 'vxe-table'
 import 'vxe-table/es/style.css'
 
+// 导入任务存储
+import { useTaskStore } from './stores/task'
+
 const app = createApp(App)
 const pinia = createPinia()
 
@@ -24,4 +27,17 @@ app.use(pinia)
 
 app.use(VxeUIBase).use(VxeUITable)
 
-app.mount('#app')
+// 初始化存储
+async function initStore() {
+  const taskStore = useTaskStore()
+  await taskStore.initStore()
+}
+
+// 保存初始化Promise到全局，供路由守卫使用
+const storeInitPromise = initStore()
+window.__storeInitPromise__ = storeInitPromise
+
+// 先初始化存储，然后挂载应用
+storeInitPromise.then(() => {
+  app.mount('#app')
+})

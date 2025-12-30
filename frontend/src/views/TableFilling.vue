@@ -3,7 +3,7 @@
         <div class="task-info-section">
             <FormDescriptionDialog />
             <PermissionDialog />
-            <component :is="headingLevel" class="task-title">{{ taskInfo.taskName || '表格填报任务' }}</component>
+            <component :is="headingLevel" class="task-title"> 填报表格 </component>
             <div class="meta">
                 <p v-if="taskInfo.taskName"><strong>任务名称：</strong>{{ taskInfo.taskName }}</p>
                 <p style="margin-left: 10px;">
@@ -53,29 +53,29 @@
             </div>
             <div v-if="validationErrorCount > 0" class="mt10">
                 <el-alert :title="`当前有 ${validationErrorCount} 处填写错误，请检查后重试，填写要求请见填表说明和权限说明。`" type="error" show-icon :closable="false"
-                    :fit-content="true" center :title-size="16" />
+                :fit-content="true" center :title-size="16" />
             </div>
         </div>
         <div class="action-buttons">
             <el-button @click="downloadTable">
                 下载表格
             </el-button>
-            <el-button @click="handleSaveDraft" 
+            <el-button @click="handleSaveDraft"
                 :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned') || (overdueInfo.isOverdue && !overdueInfo.overduePermission)">
                 暂存
             </el-button>
             <el-tooltip content="将表格恢复到初始状态。" placement="top">
-                <el-button @click="handleRestore" 
+                <el-button @click="handleRestore"
                     :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned') || (overdueInfo.isOverdue && !overdueInfo.overduePermission)">
                     还原表格
                 </el-button>
             </el-tooltip>
             <el-button v-if="false" type="warning" @click="handleWithdraw" 
-                :disabled="true">
+            :disabled="true">
                 撤回
             </el-button>
             <el-tooltip content="提交后不可修改。" placement="top">
-                <el-button type="primary" 
+                <el-button type="primary"
                     :disabled="!(taskInfo.fillingStatus === 'in_progress' || taskInfo.fillingStatus === 'returned') || !canSubmit || (overdueInfo.isOverdue && !overdueInfo.overduePermission)"
                     @click="handleSubmit">
                     提交
@@ -127,6 +127,11 @@ const permissions = reactive({
 })
 const tableKey = ref(0)
 const errors = ref<{ [key: string]: string }>({})
+// 【优化】非响应式变量，用于暂存错误，避免频繁触发Vue更新
+let internalErrors: { [key: string]: string } = {}
+// 【优化】防抖计时器
+let debounceTimer: any = null
+
 const validationErrorCount = computed(() => Object.keys(errors.value).length)
 const copyTaskId = async (textToCopy: string) => {
     if (!textToCopy) return
@@ -170,52 +175,31 @@ const getFillingStatusText = () => {
 // 下载表格数据
 const downloadTable = async () => {
     try {
-        // 显示加载状态
         const loading = ElLoading.service({
             lock: true,
             text: '正在下载表格数据，请稍候...',
             background: 'rgba(0, 0, 0, 0.7)'
         });
-
-        // 获取当前表格数据
         const currentData = hotTableRef.value?.hotInstance?.getData() || tableData.value;
-        
         if (!currentData || currentData.length === 0) {
             ElMessage.warning("该表格没有数据");
             loading.close();
             return;
         }
-
-        // 准备导出数据：使用originalHeaders作为表头
         const exportData = [];
         const headers = originalHeaders.value;
-
-        // 添加表头
         if (headers.length > 0) {
             exportData.push(headers);
-            // 添加所有数据行
             exportData.push(...currentData);
         } else {
-            // 如果没有表头，直接导出数据
             exportData.push(...currentData);
         }
-
-        // 创建工作表
         const worksheet = XLSX.utils.aoa_to_sheet(exportData);
-
-        // 创建工作簿并添加工作表
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-
-        // 生成文件名
         const exportFileName = `${taskInfo.taskName || '表格数据'}_${new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 19).replace(/[T:]/g, "_")}.xlsx`;
-
-        // 导出文件
         XLSX.writeFile(workbook, exportFileName, { bookType: 'xlsx' });
-
-        // 关闭加载状态
         loading.close();
-
         ElMessage.success("表格下载成功");
     } catch (error) {
         console.error("表格下载失败:", error);
@@ -224,20 +208,12 @@ const downloadTable = async () => {
 }
 
 const formatDateSimple = (val: string | number | Date, format: string = 'yyyy-mm-dd'): string => {
-    // 空值直接返回空字符串
     if (!val) return '';
-
-    // 处理日期对象，兼容各种输入类型
     const d = new Date(val);
-    // 校验日期有效性（无效日期返回原始值）
     if (isNaN(d.getTime())) return String(val);
-
-    // 获取补零后的年、月、日
     const year = d.getFullYear().toString();
-    const month = (d.getMonth() + 1).toString().padStart(2, '0'); // 月份从0开始，需+1
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
     const day = d.getDate().toString().padStart(2, '0');
-
-    // 替换format中的占位符
     return format
         .replace('yyyy', year)
         .replace('mm', month)
@@ -336,7 +312,7 @@ function getValidationError(value: any, perm: any): string | null {
         if (max != null && num > max) return `不能大于 ${max}`
     }
     else if (type === 'date') {
-
+        
         if (format === 'yyyy年mm月dd日') {
             const match = v.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
             if (match) { v = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`; }
@@ -362,11 +338,10 @@ function getValidationError(value: any, perm: any): string | null {
         const d = new Date(inputYear, inputMonth - 1, inputDay);
         if (isNaN(d.getTime())) return '日期格式不正确'
 
-        const parsedYear = d.getFullYear(); // 本地时区的年
-        const parsedMonth = d.getMonth() + 1; // 本地时区的月（还原为1-12）
-        const parsedDay = d.getDate(); // 本地时区的日
+        const parsedYear = d.getFullYear();
+        const parsedMonth = d.getMonth() + 1;
+        const parsedDay = d.getDate();
 
-        // 6. 所有条件匹配则返回Date对象，否则返回NaN
         if (!(parsedYear === inputYear && parsedMonth === inputMonth && parsedDay === inputDay))
             return '日期输入有误'
 
@@ -377,6 +352,13 @@ function getValidationError(value: any, perm: any): string | null {
     else if (type === 'regex' && regex && !new RegExp(regex).test(v)) return '格式不正确'
     return null
 }
+
+// 【优化】同步函数
+const syncErrorsToVue = () => {
+    // 将非响应式对象复制给响应式对象
+    errors.value = { ...internalErrors }
+}
+
 const hotSettings = computed(() => ({
     licenseKey: 'non-commercial-and-evaluation',
     language: zhCN.languageCode,
@@ -393,6 +375,9 @@ const hotSettings = computed(() => ({
     autoWrapCol: true,
     className: 'htCenter',
     themeName: 'ht-theme-classic',
+    // 【优化建议5】开启虚拟滚动配置
+    renderAllRows: false, // 确保不全量渲染
+    viewportRowRenderingOffset: 20, // 仅预渲染视口外20行，大幅提升大数据量性能
     columns: originalHeaders.value.length > 0 ? originalHeaders.value.map((_, colIndex) => {
         const perm = permissions.columns[colIndex]
         return {
@@ -468,7 +453,10 @@ const hotSettings = computed(() => ({
         }
     },
     afterInit: function () {
-        this.validateCells();
+        // 【优化】延迟初始校验，防止页面加载卡死
+        setTimeout(() => {
+            this.validateCells();
+        }, 500);
     },
     beforePaste: function (data: any[][], coords: any[]) {
         const hot = this;
@@ -500,32 +488,39 @@ const hotSettings = computed(() => ({
         }
         setTimeout(() => {
             errors.value = {};
+            internalErrors = {}; // 【优化】同步清空内部错误
             hot.validateCells();
             hot.render();
         }, 1500);
     },
+    // 【优化建议4】使用防抖更新
     afterValidate: function (isValid: boolean, value: any, row: number, prop: number | string) {
         const col = typeof prop === 'string' ? this.propToCol(prop) : prop;
         const key = `${row},${col}`;
+
+        // 只更新内部非响应式对象
         if (isValid) {
-            if (key in errors.value) {
-                const newErrors = { ...errors.value };
-                delete newErrors[key];
-                errors.value = newErrors;
+            if (key in internalErrors) {
+                delete internalErrors[key];
             }
         } else {
             const perm = permissions.columns[col];
             const errorMsg = getValidationError(value, perm);
             if (errorMsg) {
-                if (errors.value[key] !== errorMsg) {
-                    errors.value = { ...errors.value, [key]: errorMsg };
-                }
+                internalErrors[key] = errorMsg;
             }
         }
+
+        // 防抖更新 Vue 响应式数据
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            syncErrorsToVue();
+        }, 200);
     },
     afterRemoveRow: function () {
         const hot = this;
         errors.value = {};
+        internalErrors = {}; // 【优化】同步清空
         setTimeout(() => {
             hot.validateCells();
         }, 1500);
@@ -533,6 +528,7 @@ const hotSettings = computed(() => ({
     afterRowMove: function () {
         const hot = this;
         errors.value = {};
+        internalErrors = {}; // 【优化】同步清空
         setTimeout(() => {
             hot.validateCells();
         }, 1500);
@@ -556,7 +552,7 @@ watch(() => permissions.row, (newRowPermissions) => {
             manualRowMove: newRowPermissions.sortable
         })
     }
-}, { deep: true })
+})
 const fetchTableData = async () => {
     if (!linkCode.value) { router.push('/error'); return }
     try {
@@ -575,6 +571,9 @@ const fetchTableData = async () => {
         permissions.row.sortable = rowPermissions.sortable
         permissions.columns = response.permissions?.columns || []
         tableKey.value++
+        // 【优化】数据重新加载时，重置内部错误状态
+        internalErrors = {}
+        errors.value = {}
     } catch (error) {
         router.push('/error')
     }
@@ -591,6 +590,9 @@ const handleSubmit = async () => {
     if (!linkCode.value) return;
     const hot = hotTableRef.value.hotInstance;
     hot.validateCells(() => {
+        // 【优化】提交时强制同步一次，确保 errorCount 准确，防止防抖延迟导致校验通过
+        syncErrorsToVue();
+
         if (validationErrorCount.value > 0) {
             ElMessageBox.alert(`当前有 ${validationErrorCount.value} 处填写错误，请修正后重试。`, '提交失败', {
                 confirmButtonText: '确定',
@@ -742,7 +744,7 @@ const PermissionDialog = () => h(ElDialog, {
                     opacity: 0.8;
                 }
             }
-            
+
             .tooltip-content {
                 max-height: 300px;
                 overflow-y: auto;
