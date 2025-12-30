@@ -3,7 +3,7 @@
         <div class="task-info-section">
             <FormDescriptionDialog />
             <PermissionDialog />
-            <component :is="headingLevel" class="task-title">{{ taskInfo.taskName || '表格填报任务' }}</component>
+            <component :is="headingLevel" class="task-title"> 填报表格 </component>
             <div class="meta">
                 <p v-if="taskInfo.taskName"><strong>任务名称：</strong>{{ taskInfo.taskName }}</p>
                 <p style="margin-left: 10px;">
